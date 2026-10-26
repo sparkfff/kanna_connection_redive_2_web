@@ -19,6 +19,12 @@ function redirectToDashboardTab(tab: 'report' | 'notice') {
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/status-image',
+    name: 'StatusImage',
+    component: () => import('@/views/StatusImage.vue'),
+    meta: { title: '会战状态', requiresAuth: false }
+  },
+  {
     path: '/login',
     name: 'Login',
     component: () => import('@/views/Login.vue'),
@@ -92,6 +98,10 @@ function hasCookieToken() {
 router.beforeEach(async (to, _from, next) => {
   const title = (to.meta?.title as string) || '环奈连结 R'
   document.title = `${title} · 环奈连结 R`
+
+  // Read-only image view: its data is injected by the bot's isolated browser.
+  // It never uses cookies or exposes an unauthenticated group API.
+  if (to.name === 'StatusImage') return next()
 
   const userStore = useUserStore()
 

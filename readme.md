@@ -1,5 +1,26 @@
 # 你只需要出刀2（KCRR 环奈连结R Relink）
 
+### 群指令「状态」图片
+
+「状态」复用本项目 WebUI 的 Boss 数据和头像资源，生成两列会战状态图，
+包含排名、监控状态、今日已记录刀数、Boss 血量及预约 / 申请 / 挂树名单。
+暂停监控时显示最后已知进度。近期入场人数仍来自游戏接口，不代表全部未结算成员。
+
+在机器人使用的 Python 环境安装截图依赖：
+
+```sh
+pip install playwright
+python -m playwright install chromium
+# Linux 首次部署可用 python -m playwright install --with-deps chromium
+```
+
+重新构建并启动 `web/` 前端，将 `setting.py` 中 `WebSetting.status_image_url`
+设为机器人能访问的截图页地址，默认 `http://127.0.0.1:5173/#/status-image`。
+Windows 已安装 Edge 时也可将 `status_image_browser_channel` 设为 `"msedge"`。
+截图页使用隔离浏览器内注入的本群数据，不需要网页登录账号、密码或开放群数据接口。
+普通浏览器直接打开该网址不会显示群数据。浏览器未安装、前端未更新或页面无法访问时，
+指令自动回退为原来的文字回复，详细原因记录在机器人日志中。
+
 > **本项目基于 [SonderXiaoming/kanna_connection_redive_2](https://github.com/SonderXiaoming/kanna_connection_redive_2)（你只需要出刀2）修改而来**，
 > 在原项目的基础上进行了功能扩展与重构。能站在这个基础上继续做下去，全靠原作者
 > [SonderXiaoming](https://github.com/SonderXiaoming) 的开源分享与长期维护，在此致以诚挚的感谢。

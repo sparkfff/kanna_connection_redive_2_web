@@ -706,6 +706,7 @@
 </template>
 
 <script setup lang="ts">
+import { bossAvatarUrl } from '@/utils/boss'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { use } from 'echarts/core'
@@ -830,8 +831,6 @@ const bossCount = computed(() => Math.max(1, data.boss.length || 5))
 // 后端 dashboard 的 boss.id 即当期 BOSS unitId（来自 pcr.satroki.tech 的会战数据），
 // 图标资源与 pcrjjc2-clanbattle 一样取自 redive 图标库；加载失败时回退显示序号
 const bossImgFailed = reactive<Record<number, boolean>>({})
-const bossAvatarUrl = (unitId: number) =>
-  `https://redive.estertion.win/icon/unit/${unitId}.webp`
 
 // 把 boss 卡片按每 3 个一张 row 分页；若最后一张 row 不满 3 格，末尾补时钟格占剩下的位置
 // 这样典型的 5 王布局就是：第一行 [1王 2王 3王] + 第二行 [4王 5王 数字时钟]（时钟自动填在第二行最右空白处）

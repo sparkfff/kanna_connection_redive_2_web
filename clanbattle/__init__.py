@@ -1,3 +1,4 @@
+import asyncio
 import re
 import time
 from typing import Dict
@@ -199,6 +200,15 @@ async def daostate(bot: HoshinoBot, ev: CQEvent):
         return
 
     clan_info = clanbattle_info[group_id]
+    try:
+        from .status_image import build_status_payload, render_status_image
+
+        payload = await build_status_payload(bot, group_id, clan_info)
+        picture = await asyncio.wait_for(render_status_image(payload), timeout=70)
+        await bot.send(ev, picture)
+        return
+    except Exception as e:
+        logger.warning(f"状态图片渲染失败，回退文字 group={group_id}: {e}")
     now = time.time()
     msg = f"当前排名：{clan_info.rank}\n监控状态："
     if clan_info.loop_check:
