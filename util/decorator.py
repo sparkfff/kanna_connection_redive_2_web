@@ -17,17 +17,12 @@ def check_account_qqid(func):
         group_id = int(getattr(ev, "group_id", 0) or 0)
         if group_id:
             account = await pcr_sqla.query_account_for_group(qq_id, group_id)
-            tip = (
-                "还没有绑定游戏账号，请先在网页端仪表盘绑定，"
-                "或在QQ私聊我发送【绑定账号帮助】"
-            )
         else:
             accounts = await pcr_sqla.query_account(qq_id)
             account = accounts[0] if accounts else None
-            tip = "没有绑定账号，请发送【绑定账号帮助】（先加机器人好友）"
 
         if account is None:
-            await bot.send(ev, tip)
+            await bot.send(ev, "还没有绑定游戏账号，请发送【绑定账号+账号+密码】（+ 表示空格）")
             return
 
         if is_other and not other_allow(ev, account.allow_others):
