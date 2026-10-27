@@ -453,6 +453,43 @@ class SQALA:
                     sql = sql.filter(NoticeCache.user_id == user_id)
                 await session.execute(sql)
 
+    async def clear_finished_application(
+        self, group_id: int, viewer_id: int, boss: int, lap: int, battle_time: int
+    ) -> int:
+        """Remove only applications belonging to this settled game account."""
+        async with self.async_session() as session:
+            async with session.begin():
+                result = await session.execute(
+                    select(NoticeCache).where(
+                        NoticeCache.group_id == group_id,
+                        NoticeCache.notice_type == NoticeType.apply.value,
+                        NoticeCache.boss == boss,
+                        NoticeCache.time <= battle_time,
+                        NoticeCache.lap <= lap,
+                    )
+                )
+                applications = result.scalars().all()
+                if not applications:
+                    return 0
+                result = await session.execute(
+                    select(Account).where(
+                        Account.user_id.in_({item.user_id for item in applications}),
+                        Account.group_id.in_([0, group_id]),
+                    ).order_by(desc(Account.group_id))
+                )
+                # Same account-selection rule as query_account_for_group:
+                # this group's legacy binding takes priority over a global one.
+                accounts = {}
+                for account in result.scalars().all():
+                    accounts.setdefault(account.user_id, account)
+                removed = 0
+                for item in applications:
+                    account = accounts.get(item.user_id)
+                    if account and account.viewer_id == viewer_id:
+                        await session.delete(item)
+                        removed += 1
+                return removed
+
     async def delete_notice_by_user(self, group_id: int, user_id: int) -> int:
         """删掉某人在某群的**全部**通知（退群自动清理用），返回实际删掉的条数。
 

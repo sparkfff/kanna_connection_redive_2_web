@@ -345,6 +345,13 @@ class ClanBattle:
 
     async def record_change(self, clan_battle_top: ClanBattleTopResponse):
         for history in self.damage_correction.update(clan_battle_top):
+            if await pcr_sqla.clear_finished_application(
+                self.group_id, history.viewer_id, history.order_num,
+                history.lap_num, history.create_time,
+            ):
+                from . import notice_update_time
+
+                notice_update_time[self.group_id] = int(time.time())
             damage = self.damage_correction.history_damage(history)
             correction = (
                 f"（原始伤害{history.damage}）"
