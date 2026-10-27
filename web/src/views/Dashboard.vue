@@ -109,11 +109,11 @@
                 size="small" aria-label="首日满补"
               />
               <el-button v-if="canManageCarry" link size="small" @click="openCarryDialog" :disabled="carryLoading">
-                {{ data.first_day_carry.date ? data.first_day_carry.date.slice(5) : '设置日期' }}
+                {{ data.first_day_carry.date ? data.first_day_carry.date.slice(5) : (data.first_day_carry.automatic ? '自动' : '设置') }}
               </el-button>
               <span v-else-if="data.first_day_carry.date">{{ data.first_day_carry.date.slice(5) }}</span>
               <span v-if="data.first_day_carry.enabled" class="carry-effective" :class="{ active: data.first_day_carry.effective }">
-                {{ data.first_day_carry.effective ? '生效中' : '非首日' }}
+                {{ data.first_day_carry.effective ? '生效中' : (data.first_day_carry.automatic && !data.first_day_carry.date ? '待识别' : '非首日') }}
               </span>
             </div>
           </el-tooltip>
@@ -140,9 +140,13 @@
       </div>
 
       <el-dialog v-model="carryDialogVisible" title="设置首日满补" width="420px" style="max-width: calc(100vw - 24px)">
-        <p class="carry-description">选择本期会战首日。仅该日 05:00 至次日 05:00（UTC+8）生效，其他游戏日正常判定。</p>
+        <p class="carry-description">自动模式开启一次，每期首日持续生效。仅首日 05:00 至次日 05:00（UTC+8）生效，其他游戏日正常判定。</p>
         <el-form label-width="76px">
-          <el-form-item label="首日日期">
+          <el-form-item label="每期自动">
+            <el-switch v-model="carryAutomatic" aria-label="每期自动识别首日" />
+          </el-form-item>
+          <p v-if="carryAutomatic" class="carry-description">按国服监控中的会战编号匹配日程。未识别到日程时等待，不猜测日期；台服请使用手动日期。</p>
+          <el-form-item v-if="!carryAutomatic" label="首日日期">
             <el-date-picker v-model="carryDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" :clearable="false" placeholder="选择会战首日" style="width: 100%" />
           </el-form-item>
         </el-form>
@@ -817,7 +821,7 @@ const data = reactive<DashboardResponse>({
   boss: [],
   report: [],
   day_num: 0,
-  first_day_carry: { enabled: false, date: '', game_day: '', effective: false, corrected_count: 0 },
+  first_day_carry: { automatic: false, enabled: false, date: '', game_day: '', effective: false, corrected_count: 0 },
   last_dao: [],
   // 今日伤害排行 Top 10 + 全员总量（后端按玩家聚合今日出刀算出，右栏条形图用）
   day_damage_rank: [],
@@ -838,27 +842,29 @@ const bossCount = computed(() => Math.max(1, data.boss.length || 5))
 const carryLoading = ref(false)
 const carryDialogVisible = ref(false)
 const carryDate = ref('')
+const carryAutomatic = ref(true)
 const canManageCarry = computed(() => Number(data.clan_priority) >= 2)
 const carryTip = computed(() => {
   const setting = data.first_day_carry
   const date = setting.date ? `首日：${setting.date}（05:00换日）。` : '尚未设置首日日期。'
-  return `${date}${setting.effective ? '当前生效。' : '当前正常判定。'}群主、群管或 bot 主人可修改。`
+  return `${setting.automatic ? '每期自动识别。' : '手动日期。'}${date}${setting.effective ? '当前生效。' : '当前正常判定。'}群主、群管或 bot 主人可修改。`
 })
 
 function openCarryDialog() {
   if (!canManageCarry.value || carryLoading.value) return
   carryDate.value = data.first_day_carry.date || data.first_day_carry.game_day
+  carryAutomatic.value = data.first_day_carry.automatic || (!data.first_day_carry.date && !data.first_day_carry.enabled)
   carryDialogVisible.value = true
 }
 
-async function persistCarry(enabled: boolean, date = ''): Promise<boolean> {
+async function persistCarry(enabled: boolean, date = '', automatic = false): Promise<boolean> {
   const targetGroup = groupId.value
   carryLoading.value = true
   try {
-    const result = await setFirstDayCarry(targetGroup, enabled, date)
+    const result = await setFirstDayCarry(targetGroup, enabled, date, automatic)
     if (groupId.value !== targetGroup) return false
     data.first_day_carry = result
-    ElMessage.success(enabled ? `已开启，首日 ${result.date}，修正 ${result.corrected_count} 条记录` : '已关闭，已修正记录保留')
+    ElMessage.success(enabled ? `已开启，${result.automatic ? '每期自动，' : ''}首日 ${result.date || '待识别'}，修正 ${result.corrected_count} 条记录` : '已关闭，已修正记录保留')
     await loadDashboard()
     return true
   } catch {
@@ -876,11 +882,11 @@ async function beforeCarryChange(): Promise<boolean> {
 }
 
 async function saveCarrySettings() {
-  if (!carryDate.value) {
+  if (!carryAutomatic.value && !carryDate.value) {
     ElMessage.warning('请选择会战首日日期')
     return
   }
-  if (await persistCarry(true, carryDate.value)) carryDialogVisible.value = false
+  if (await persistCarry(true, carryAutomatic.value ? '' : carryDate.value, carryAutomatic.value)) carryDialogVisible.value = false
 }
 
 watch(groupId, () => { carryDialogVisible.value = false })

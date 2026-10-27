@@ -15,6 +15,7 @@ from ..login import query
 from ..setting import ClientSetting
 from ..util.auto_boss import clan_boss_info
 from ..util.knife_policy import first_day_carry_active, first_day_window, game_day
+from .carry_schedule import sync_first_day_carry
 from ..util.decorator import (
     check_account_qqid,
     check_priv_adimin,
@@ -65,7 +66,7 @@ help_text = """
 【申请出刀 + 数字 + （留言） 】 申请打boss，boss死亡自动清空
 【进1～进5】快速申请对应boss，也可附加留言，例如【进3 合刀】
 【取消申请】/【不打了】取消本人的出刀申请
-【开启首日满补 + （YYYY-MM-DD）】管理：仅指定首日按尾刀/补偿统计，不填日期用当前游戏日
+【开启首日满补 + （YYYY-MM-DD）】管理：不填日期每期自动识别首日，也可手动指定日期
 【关闭首日满补】管理：后续记录恢复正常判定
 【首日满补状态】查看首日满补设置
 【清空申请】（仅）管理，清空预约
@@ -197,25 +198,32 @@ async def close_push(bot: HoshinoBot, ev: CQEvent):
     await _switch_push(bot, ev, False)
 
 
-@sv.on_rex(r"^开启首日满补(?:模式)?(?:\s+(\d{4}-\d{2}-\d{2}))?$")
+@sv.on_rex(r"^开启首日满补(?:模式)?(?:\s+(\d{4}-\d{2}-\d{2}|自动))?$")
 async def enable_first_day_carry(bot: HoshinoBot, ev: CQEvent):
     if not ev.group_id or not is_group_manager(ev):
         await bot.send(ev, "请由本群群主、管理员或bot主人在群内设置")
         return
-    day = ev["match"].group(1) or game_day(time.time())
+    day = ev["match"].group(1)
+    automatic = not day or day == "自动"
+    day = None if automatic else day
     try:
-        first_day_window(day)
+        if day:
+            first_day_window(day)
     except ValueError:
         await bot.send(ev, "日期无效，请使用 YYYY-MM-DD，例如【开启首日满补 2026-10-26】")
         return
-    count = await pcr_sqla.set_first_day_carry_policy(ev.group_id, True, day)
+    count = await pcr_sqla.set_first_day_carry_policy(ev.group_id, True, day, automatic=automatic, battle_id=0)
+    policy = await sync_first_day_carry(ev.group_id, clanbattle_info.get(ev.group_id))
+    count += policy.get("corrected_count", 0)
+    description = "每期自动识别首日，设置持续保留" if automatic else "手动指定首日"
+    day = policy["date"] or "待识别（需开启国服会战监控；台服请手动指定日期）"
     notice_update_time[ev.group_id] = int(time.time())
     if clan_info := clanbattle_info.get(ev.group_id):
         clan_info.dao_update_time = int(time.time())
     await bot.send(
-        ev, f"已开启首日满补模式，本期首日设为 {day}（05:00 至次日05:00，UTC+8）。\n"
+        ev, f"已开启首日满补模式，{description}。本期首日：{day}（05:00 至次日05:00，UTC+8）。\n"
         f"该日完整刀按补偿计，确认击杀记尾刀，短时补偿仍记补偿；已修正 {count} 条完整刀记录。\n"
-        "其他游戏日正常判定。日期不对可发送【开启首日满补 YYYY-MM-DD】重新指定。",
+        "其他游戏日正常判定。可发送【开启首日满补 YYYY-MM-DD】改为手动日期。",
     )
 
 
@@ -234,11 +242,12 @@ async def first_day_carry_status(bot: HoshinoBot, ev: CQEvent):
     if not ev.group_id:
         await bot.send(ev, "请在群内查询")
         return
-    policy = await pcr_sqla.get_first_day_carry_policy(ev.group_id)
+    policy = await sync_first_day_carry(ev.group_id, clanbattle_info.get(ev.group_id))
     effective = first_day_carry_active(policy, time.time())
     await bot.send(
         ev, f"首日满补：{'开启' if policy['enabled'] else '关闭'}\n"
-        f"本期首日：{policy['date'] or '未设置'}（UTC+8，05:00换日）\n"
+        f"识别方式：{'每期自动' if policy.get('automatic') else '手动日期'}\n"
+        f"本期首日：{policy['date'] or '待识别'}（UTC+8，05:00换日）\n"
         f"当前游戏日：{game_day(time.time())}，{'按首日满补判定' if effective else '正常判定'}",
     )
 

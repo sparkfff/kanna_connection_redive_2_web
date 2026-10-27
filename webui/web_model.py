@@ -129,11 +129,13 @@ class DayDamageRank(BaseModel):
 
 # 注意：DashboardResponse 里引用了 DaoInfo，所以必须放在 DaoInfo 之后定义
 class FirstDayCarryForm(BaseModel):
+    automatic: bool = False
     enabled: bool
     date: str = ""
 
 
 class FirstDayCarryResponse(BaseModel):
+    automatic: bool = False
     enabled: bool = False
     date: str = ""
     game_day: str = ""

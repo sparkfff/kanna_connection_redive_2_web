@@ -28,6 +28,7 @@ from ..util.auto_boss import clan_boss_info
 from ..util.knife_policy import classify_knife
 from .base import find_item, format_bignum, format_precent
 from .damage_correction import DamageCorrectionTracker
+from .carry_schedule import sync_first_day_carry
 
 from traceback import format_exc
 
@@ -93,6 +94,7 @@ class ClanBattle:
         self.period = clan_boss_info.lap2stage(self.lap_num)
         self.refresh_latest_time(clan_battle_top)
         self.damage_correction.reset(clan_battle_top)
+        await sync_first_day_carry(self.group_id, self)
         self.members: Dict[int, str] = await self.all_member()
         self.dao_update_time = int(time.time())
 
@@ -208,7 +210,7 @@ class ClanBattle:
         time_line = await self.client.time_line_report(
             pcrid, self.clan_battle_id, record.battle_log_id
         )
-        policy = await pcr_sqla.get_first_day_carry_policy(self.group_id)
+        policy = await sync_first_day_carry(self.group_id, self)
         temp_dict = {
             "group_id": self.group_id,
             "battle_log_id": time % 10000000,  # 这玩意居然会重复，受不了，直接取时间
@@ -453,6 +455,11 @@ class ClanBattlePool(PoolBase):
 
             # 初始化
             clan_battle_top = await clan_info.get_clanbattle_top()
+            if clan_battle_top.clan_battle_id and clan_battle_top.clan_battle_id != clan_info.clan_battle_id:
+                clan_info.clan_battle_id = clan_battle_top.clan_battle_id
+                clan_info.damage_correction.reset(clan_battle_top)
+                clan_info.period = clan_boss_info.lap2stage(clan_battle_top.lap_num) if clan_battle_top.lap_num else ""
+            await sync_first_day_carry(clan_info.group_id, clan_info)
             clan_info.lap_num = clan_battle_top.lap_num
             # 用 set_rank 而不是直接赋值：排名变了要打推送标记，网页端卡片才会自己更新
             clan_info.set_rank(clan_battle_top.period_rank)

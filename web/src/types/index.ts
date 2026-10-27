@@ -111,6 +111,7 @@ export interface DayDamageRank {
 }
 
 export interface FirstDayCarryState {
+  automatic: boolean
   enabled: boolean
   date: string
   game_day: string

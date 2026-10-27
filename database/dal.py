@@ -38,6 +38,8 @@ from .models import (
 _COLUMN_MIGRATIONS = [
     ("groupsetting", "first_day_carry_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
     ("groupsetting", "first_day_carry_date", "VARCHAR NOT NULL DEFAULT ''"),
+    ("groupsetting", "first_day_carry_automatic", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("groupsetting", "first_day_carry_battle_id", "INTEGER NOT NULL DEFAULT 0"),
     # 游戏账号的归属群（0 = 全局号，即 QQ 私聊绑定的那个）
     ("account", "group_id", "INTEGER NOT NULL DEFAULT 0"),
     # 5 星彩装的词条（JSON）。这张表是随「网页端普通 EX 槽」一起加的，先跑过的库
@@ -893,19 +895,32 @@ class SQALA:
             return {
                 "enabled": bool(setting and setting.first_day_carry_enabled),
                 "date": setting.first_day_carry_date if setting else "",
+                "automatic": bool(setting and setting.first_day_carry_automatic),
+                "battle_id": setting.first_day_carry_battle_id if setting else 0,
             }
 
-    async def set_first_day_carry_policy(self, group_id: int, enabled: bool, day=None) -> int:
-        window = first_day_window(day) if enabled else None
+    async def set_first_day_carry_policy(
+        self, group_id: int, enabled: bool, day=None, automatic=None, battle_id=None, resolve_only=False
+    ) -> int:
+        window = first_day_window(day) if enabled and day else None
         async with self.async_session() as session:
             async with session.begin():
                 setting = await session.get(GroupSetting, int(group_id))
+                if resolve_only and not (setting and setting.first_day_carry_enabled and setting.first_day_carry_automatic):
+                    return 0
                 if setting is None:
                     setting = GroupSetting(group_id=int(group_id))
                     session.add(setting)
                 setting.first_day_carry_enabled = bool(enabled)
+                if automatic is not None:
+                    setting.first_day_carry_automatic = bool(automatic)
+                if battle_id is not None:
+                    setting.first_day_carry_battle_id = int(battle_id)
                 if day is not None:
                     setting.first_day_carry_date = day
+                elif enabled and automatic:
+                    setting.first_day_carry_date = ""
+                    setting.first_day_carry_battle_id = 0
                 if window:
                     result = await session.execute(
                         update(RecordDao).where(

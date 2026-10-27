@@ -291,6 +291,8 @@ class GroupSetting(DataBase, table=True):
     push_enabled: bool = Field(default=True, title="主动推送")
     first_day_carry_enabled: bool = Field(default=False, title="首日满补模式")
     first_day_carry_date: str = Field(default="", title="本期首日游戏日期")
+    first_day_carry_automatic: bool = Field(default=False, title="每期自动识别首日")
+    first_day_carry_battle_id: int = Field(default=0, title="首日对应的会战编号")
 
 
 class BlackUnit(DataBase, table=True):
