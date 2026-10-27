@@ -6,7 +6,7 @@
       <div class="heading-content">
         <div class="title-line">
           <h2>{{ order }} · {{ boss.name || '未知 BOSS' }}</h2>
-          <span class="lap" :class="lapLevel">{{ lapLevel === 'high' ? '高周目 · ' : lapLevel === 'low' ? '低周目 · ' : '' }}{{ boss.lap || '—' }} 周目</span>
+          <span class="lap" :class="lapLevel">{{ boss.lap || '—' }} 周目</span>
         </div>
         <div class="hp-track">
           <div class="hp-fill" :style="{ width: `${percent}%` }"></div>

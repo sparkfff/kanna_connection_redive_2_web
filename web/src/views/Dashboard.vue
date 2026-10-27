@@ -159,7 +159,7 @@
                   </div>
                 </div>
                 <div class="boss-lap" v-if="cell.boss?.lap" :class="bossLapLevel(cell.boss.lap, data.boss)">
-                  {{ bossLapLabel(cell.boss.lap, data.boss) }}
+                  {{ cell.boss.lap }} 周目
                 </div>
               </div>
 
@@ -678,7 +678,7 @@
 </template>
 
 <script setup lang="ts">
-import { bossAvatarUrl, bossLapLevel, bossLapLabel } from '@/utils/boss'
+import { bossAvatarUrl, bossLapLevel } from '@/utils/boss'
 import KnifeDistribution from '@/components/KnifeDistribution.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

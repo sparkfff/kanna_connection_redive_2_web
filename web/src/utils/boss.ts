@@ -12,7 +12,3 @@ export function bossLapLevel(lap: number, bosses: Array<{ lap: number }>): LapLe
   return lap === laps[0] ? 'low' : lap === laps[1] ? 'high' : ''
 }
 
-export function bossLapLabel(lap: number, bosses: Array<{ lap: number }>): string {
-  const level = bossLapLevel(lap, bosses)
-  return `${level === 'high' ? '高周目 · ' : level === 'low' ? '低周目 · ' : ''}${lap} 周目`
-}
