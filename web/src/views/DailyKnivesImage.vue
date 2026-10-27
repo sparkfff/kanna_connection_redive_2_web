@@ -20,10 +20,12 @@
     </section>
 
     <div v-if="!data.roster_known" class="roster-note">未获取完整公会名单，仅展示有战报的成员，无法列出全部未出刀成员。</div>
-    <section v-for="group in data.groups" :key="group.count" class="group-card" :style="{ '--group-color': daoNumColor(group.count) }">
+    <div class="groups">
+    <section v-for="group in data.groups" :key="group.count" class="group-card" :class="{ wide: group.members.length >= 8 }" :style="{ '--group-color': daoNumColor(group.count) }">
       <div class="group-heading"><span class="count-badge">{{ group.count === 0 ? '未出刀' : `${group.count} 刀` }}</span><span>{{ group.members.length }} 人</span><span v-if="group.count === 3" class="group-hint">已完成</span></div>
       <div class="members"><span v-for="member in group.members" :key="member.id" class="member">{{ member.name }}</span></div>
     </section>
+    </div>
     <section v-if="!data.groups.length" class="empty">暂无出刀记录</section>
     <footer>每日 05:00（UTC+8）换日 · 每位成员最多计 3 刀<br />{{ data.roster_known ? '未出刀成员依据最近获取的公会名单，昨日统计使用同一名单' : '未出刀人数未知，破折号不表示零人' }}</footer>
   </main>
@@ -49,35 +51,37 @@ const data = (window as Window & { __KANNA_STATUS__?: DailyImageData }).__KANNA_
 </script>
 
 <style scoped>
-.daily-board { width: 960px; box-sizing: border-box; padding: 32px; background: #f6f7fc; color: #273448; font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
-.board-heading { display: flex; justify-content: space-between; gap: 20px; align-items: center; margin-bottom: 26px; }
-.board-heading p { color: #9794b5; font-size: 13px; letter-spacing: 2px; margin: 0 0 7px; }
-h1 { font-size: 32px; line-height: 1.4; margin: 0; }
-h1 span { margin-left: 14px; font-size: 16px; font-weight: 400; color: #9a9eb3; }
-h2 { font-size: 16px; font-weight: 400; color: #7c8397; margin: 5px 0 0; overflow-wrap: anywhere; }
-.generated { text-align: right; font-size: 12px; color: #9a9eb3; line-height: 1.8; flex-shrink: 0; }
-.overview { display: grid; grid-template-columns: 1.1fr 1fr 1fr; border-radius: 18px; padding: 22px 0; margin-bottom: 18px; background: white; border: 1px solid #ececf5; box-shadow: 0 5px 16px #24265706; }
-.overview > div { padding: 0 24px; min-width: 0; }
+.daily-board { width: 800px; box-sizing: border-box; padding: 18px; background: #f6f7fc; color: #273448; font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
+.board-heading { display: flex; justify-content: space-between; gap: 14px; align-items: center; margin-bottom: 14px; }
+.board-heading p { color: #9794b5; font-size: 11px; letter-spacing: 1px; margin: 0 0 3px; }
+h1 { font-size: 25px; line-height: 1.3; margin: 0; }
+h1 span { margin-left: 10px; font-size: 13px; font-weight: 400; color: #9a9eb3; }
+h2 { font-size: 13px; font-weight: 400; color: #7c8397; margin: 3px 0 0; overflow-wrap: anywhere; }
+.generated { text-align: right; font-size: 11px; color: #9a9eb3; line-height: 1.6; flex-shrink: 0; }
+.overview { display: grid; grid-template-columns: 1.1fr 1fr 1fr; border-radius: 12px; padding: 12px 0; margin-bottom: 10px; background: white; border: 1px solid #ececf5; }
+.overview > div { padding: 0 16px; min-width: 0; }
 .overview > div + div { border-left: 1px solid #eff0f7; }
-.overview span { font-size: 15px; color: #7d839a; }
-.overview strong { display: block; font-size: 43px; line-height: 1.6; color: #6963c8; }
-.overview small { margin-left: 6px; font-size: 16px; font-weight: 400; color: #9297aa; }
-.overview p { margin: 0; color: #a1a6b7; font-size: 12px; }
+.overview span { font-size: 13px; color: #7d839a; }
+.overview strong { display: block; font-size: 31px; line-height: 1.4; color: #6963c8; }
+.overview small { margin-left: 5px; font-size: 13px; font-weight: 400; color: #9297aa; }
+.overview p { margin: 0; color: #a1a6b7; font-size: 10px; }
 .overview .green { color: #10b981; }
 .overview .rose { color: #ec637b; }
-.progress-card { background: white; padding: 18px 22px; border: 1px solid #ececf5; border-radius: 14px; margin-bottom: 22px; }
-.progress-title { display: flex; justify-content: space-between; color: #7d839a; font-size: 13px; margin-bottom: 12px; }
-.distribution { display: flex; height: 13px; border-radius: 8px; overflow: hidden; gap: 3px; }
-.legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 12px; font-size: 12px; color: #9297aa; }
+.progress-card { background: white; padding: 10px 14px; border: 1px solid #ececf5; border-radius: 10px; margin-bottom: 12px; }
+.progress-title { display: flex; justify-content: space-between; color: #7d839a; font-size: 11px; margin-bottom: 7px; }
+.distribution { display: flex; height: 9px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 7px; font-size: 10px; color: #9297aa; }
 .legend i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; }
-.group-card { background: white; border: 1px solid #ececf5; border-left: 4px solid var(--group-color); border-radius: 13px; padding: 17px 20px; margin-top: 13px; }
-.group-heading { display: flex; align-items: center; gap: 12px; font-size: 13px; color: #a1a6b7; margin-bottom: 12px; }
-.count-badge { font-weight: 700; font-size: 17px; color: var(--group-color); }
+.groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; align-items: start; }
+.group-card { background: white; border: 1px solid #ececf5; border-left: 3px solid var(--group-color); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.group-card.wide { grid-column: 1 / -1; }
+.group-heading { display: flex; align-items: center; gap: 9px; font-size: 11px; color: #a1a6b7; margin-bottom: 7px; }
+.count-badge { font-weight: 700; font-size: 15px; color: var(--group-color); }
 .group-hint { margin-left: auto; color: #10b981; font-size: 12px; }
-.members { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
-.member { background: color-mix(in srgb, var(--group-color) 8%, white); border: 1px solid color-mix(in srgb, var(--group-color) 18%, white); border-radius: 8px; font-size: 15px; padding: 8px 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.roster-note { color: #ab8747; background: #fff8e8; padding: 12px 16px; border-radius: 10px; margin: 16px 0; font-size: 13px; }
-.empty { text-align: center; color: #a1a6b7; padding: 48px; background: white; border-radius: 14px; }
-footer { text-align: center; color: #a1a6b7; font-size: 12px; line-height: 1.9; margin-top: 22px; }
+.members { display: flex; flex-wrap: wrap; gap: 5px; }
+.member { max-width: 100%; box-sizing: border-box; background: color-mix(in srgb, var(--group-color) 8%, white); border: 1px solid color-mix(in srgb, var(--group-color) 18%, white); border-radius: 6px; font-size: 14px; padding: 4px 8px; line-height: 1.4; overflow-wrap: anywhere; }
+.roster-note { color: #ab8747; background: #fff8e8; padding: 9px 12px; border-radius: 8px; margin: 10px 0; font-size: 12px; }
+.empty { text-align: center; color: #a1a6b7; padding: 28px; background: white; border-radius: 10px; }
+footer { text-align: center; color: #a1a6b7; font-size: 10px; line-height: 1.7; margin-top: 12px; }
 .no-payload { padding: 32px; }
 </style>
