@@ -209,6 +209,7 @@ async def enable_first_day_carry(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "日期无效，请使用 YYYY-MM-DD，例如【开启首日满补 2026-10-26】")
         return
     count = await pcr_sqla.set_first_day_carry_policy(ev.group_id, True, day)
+    notice_update_time[ev.group_id] = int(time.time())
     if clan_info := clanbattle_info.get(ev.group_id):
         clan_info.dao_update_time = int(time.time())
     await bot.send(
@@ -224,6 +225,7 @@ async def disable_first_day_carry(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "请由本群群主、管理员或bot主人在群内设置")
         return
     await pcr_sqla.set_first_day_carry_policy(ev.group_id, False)
+    notice_update_time[ev.group_id] = int(time.time())
     await bot.send(ev, "已关闭首日满补模式，后续记录恢复正常判定；已修正记录保留，可用【修正出刀】调整。")
 
 

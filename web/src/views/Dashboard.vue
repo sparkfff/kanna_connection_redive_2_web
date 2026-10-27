@@ -98,6 +98,25 @@
           <span class="clan-name">{{ data.clan_name || '未知公会' }}</span>
           <span class="stage">{{ data.stage || '暂无阶段信息' }}</span>
           <span class="day-num">第 {{ data.day_num || 0 }} 天</span>
+          <el-tooltip :content="carryTip" placement="top">
+            <div class="carry-control">
+              <span>首日满补</span>
+              <el-switch
+                :model-value="data.first_day_carry.enabled"
+                :before-change="beforeCarryChange"
+                :disabled="!canManageCarry"
+                :loading="carryLoading"
+                size="small" aria-label="首日满补"
+              />
+              <el-button v-if="canManageCarry" link size="small" @click="openCarryDialog" :disabled="carryLoading">
+                {{ data.first_day_carry.date ? data.first_day_carry.date.slice(5) : '设置日期' }}
+              </el-button>
+              <span v-else-if="data.first_day_carry.date">{{ data.first_day_carry.date.slice(5) }}</span>
+              <span v-if="data.first_day_carry.enabled" class="carry-effective" :class="{ active: data.first_day_carry.effective }">
+                {{ data.first_day_carry.effective ? '生效中' : '非首日' }}
+              </span>
+            </div>
+          </el-tooltip>
         </div>
         <div class="status-right">
           <el-tag size="small" type="warning" effect="plain" v-if="sseEnabled">
@@ -119,6 +138,20 @@
           </el-button>
         </div>
       </div>
+
+      <el-dialog v-model="carryDialogVisible" title="设置首日满补" width="420px" style="max-width: calc(100vw - 24px)">
+        <p class="carry-description">选择本期会战首日。仅该日 05:00 至次日 05:00（UTC+8）生效，其他游戏日正常判定。</p>
+        <el-form label-width="76px">
+          <el-form-item label="首日日期">
+            <el-date-picker v-model="carryDate" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" :clearable="false" placeholder="选择会战首日" style="width: 100%" />
+          </el-form-item>
+        </el-form>
+        <p class="carry-description">开启会同步将该日已记录的完整刀改为补偿；已有尾刀和补偿保留。关闭不会回滚已修正记录。</p>
+        <template #footer>
+          <el-button @click="carryDialogVisible = false" :disabled="carryLoading">取消</el-button>
+          <el-button type="primary" :loading="carryLoading" @click="saveCarrySettings">保存并开启</el-button>
+        </template>
+      </el-dialog>
 
       <!-- BOSS 状态 -->
       <!-- 按每张 row 显示 3 格进行分页渲染：
@@ -703,6 +736,7 @@ import {
   switchMonitor,
   getBossDao,
   getRankLines,
+  setFirstDayCarry,
 } from '@/api'
 import type { RankLine } from '@/api'
 import { createSSEConnection } from '@/utils/sse'
@@ -783,6 +817,7 @@ const data = reactive<DashboardResponse>({
   boss: [],
   report: [],
   day_num: 0,
+  first_day_carry: { enabled: false, date: '', game_day: '', effective: false, corrected_count: 0 },
   last_dao: [],
   // 今日伤害排行 Top 10 + 全员总量（后端按玩家聚合今日出刀算出，右栏条形图用）
   day_damage_rank: [],
@@ -799,6 +834,56 @@ const data = reactive<DashboardResponse>({
 })
 
 const bossCount = computed(() => Math.max(1, data.boss.length || 5))
+
+const carryLoading = ref(false)
+const carryDialogVisible = ref(false)
+const carryDate = ref('')
+const canManageCarry = computed(() => Number(data.clan_priority) >= 2)
+const carryTip = computed(() => {
+  const setting = data.first_day_carry
+  const date = setting.date ? `首日：${setting.date}（05:00换日）。` : '尚未设置首日日期。'
+  return `${date}${setting.effective ? '当前生效。' : '当前正常判定。'}群主、群管或 bot 主人可修改。`
+})
+
+function openCarryDialog() {
+  if (!canManageCarry.value || carryLoading.value) return
+  carryDate.value = data.first_day_carry.date || data.first_day_carry.game_day
+  carryDialogVisible.value = true
+}
+
+async function persistCarry(enabled: boolean, date = ''): Promise<boolean> {
+  const targetGroup = groupId.value
+  carryLoading.value = true
+  try {
+    const result = await setFirstDayCarry(targetGroup, enabled, date)
+    if (groupId.value !== targetGroup) return false
+    data.first_day_carry = result
+    ElMessage.success(enabled ? `已开启，首日 ${result.date}，修正 ${result.corrected_count} 条记录` : '已关闭，已修正记录保留')
+    await loadDashboard()
+    return true
+  } catch {
+    return false // request interceptor displays the API error; keep prior state.
+  } finally {
+    carryLoading.value = false
+  }
+}
+
+async function beforeCarryChange(): Promise<boolean> {
+  if (!canManageCarry.value || carryLoading.value) return false
+  if (data.first_day_carry.enabled) await persistCarry(false)
+  else openCarryDialog()
+  return false // State is committed only after the API succeeds.
+}
+
+async function saveCarrySettings() {
+  if (!carryDate.value) {
+    ElMessage.warning('请选择会战首日日期')
+    return
+  }
+  if (await persistCarry(true, carryDate.value)) carryDialogVisible.value = false
+}
+
+watch(groupId, () => { carryDialogVisible.value = false })
 
 // —— BOSS 头像 —— //
 // 后端 dashboard 的 boss.id 即当期 BOSS unitId（来自 pcr.satroki.tech 的会战数据），
@@ -1681,6 +1766,10 @@ onBeforeUnmount(() => {
   color: var(--kanna-pink-deep);
   font-size: 15px;
 }
+.carry-control { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--kanna-text-secondary); white-space: nowrap; }
+.carry-effective { font-size: 11px; color: var(--kanna-text-muted); }
+.carry-effective.active { color: #10b981; }
+.carry-description { font-size: 13px; line-height: 1.8; color: var(--kanna-text-secondary); margin: 0 0 16px; }
 .stage {
   color: var(--kanna-text-secondary);
   padding: 3px 10px;

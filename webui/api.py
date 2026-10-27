@@ -13,6 +13,7 @@ from ..util.tools import daoflag2str, anywhere_send
 
 from ..clanbattle import clanbattle_info, notice_update_time
 from ..util.auto_boss import clan_boss_info
+from ..util.knife_policy import first_day_carry_active, first_day_window, game_day
 from ..clanbattle.base import (
     DEFAULT_RANK_LINES,
     HEAD_RANK_LINES,
@@ -252,7 +253,49 @@ async def dashboard_info(group_id: int, token: CookieCache = Depends(verify_grou
         for tree in trees:
             response.boss[tree.boss - 1].tree += 1
     response.day_num = await pcr_sqla.get_clan_day(group_id)
+    response.first_day_carry = await first_day_carry_state(group_id)
     return response.dict()
+
+
+async def first_day_carry_state(group_id: int) -> FirstDayCarryResponse:
+    policy = await pcr_sqla.get_first_day_carry_policy(group_id)
+    now = time.time()
+    return FirstDayCarryResponse(
+        enabled=policy["enabled"], date=policy["date"],
+        game_day=game_day(now), effective=first_day_carry_active(policy, now),
+    )
+
+
+@api_router.get("/{group_id}/first_day_carry")
+async def get_first_day_carry(
+    group_id: int, token: CookieCache = Depends(verify_group_access)
+):
+    return await first_day_carry_state(group_id)
+
+
+@api_router.put("/{group_id}/first_day_carry")
+async def update_first_day_carry(
+    group_id: int, form: FirstDayCarryForm,
+    token: CookieCache = Depends(verify_group_access),
+):
+    await require_group_priority(
+        int(token.user_id), group_id, GroupPriority.group_admin.value, "设置首日满补",
+    )
+    day = None
+    if form.enabled:
+        try:
+            start, _ = first_day_window(form.date or game_day(time.time()))
+            day = game_day(start)
+        except (ValueError, OverflowError):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "日期无效，请使用 YYYY-MM-DD")
+    count = await pcr_sqla.set_first_day_carry_policy(group_id, form.enabled, day)
+    now = int(time.time())
+    notice_update_time[group_id] = now
+    if clan_info := clanbattle_info.get(group_id):
+        clan_info.dao_update_time = now
+    response = await first_day_carry_state(group_id)
+    response.corrected_count = count
+    return response
 
 
 @api_router.get("/{group_id}/boss_dao")
