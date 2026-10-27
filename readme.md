@@ -21,6 +21,11 @@ Windows 已安装 Edge 时也可将 `status_image_browser_channel` 设为 `"msed
 普通浏览器直接打开该网址不会显示群数据。浏览器未安装、前端未更新或页面无法访问时，
 指令自动回退为原来的文字回复，详细原因记录在机器人日志中。
 
+「今日出刀」「昨日出刀」共用上述截图环境，返回 WebUI 出刀分布图片，
+包含累计刀数、满刀人数、未出刀人数和分组成员名单。仍按每日 05:00（UTC+8）换日，
+完整刀计 1，尾刀 / 补偿计 0.5，每人最多计 3 刀。没有完整公会名单时明确标注统计范围，
+截图失败时回退为原来的统计图片。两种截图只需配置同一项 `status_image_url`。
+
 > **本项目基于 [SonderXiaoming/kanna_connection_redive_2](https://github.com/SonderXiaoming/kanna_connection_redive_2)（你只需要出刀2）修改而来**，
 > 在原项目的基础上进行了功能扩展与重构。能站在这个基础上继续做下去，全靠原作者
 > [SonderXiaoming](https://github.com/SonderXiaoming) 的开源分享与长期维护，在此致以诚挚的感谢。

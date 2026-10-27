@@ -7,7 +7,7 @@ import time
 from urllib.parse import urlsplit
 
 from ..basedata import NoticeType
-from ..database.dal import pcr_sqla
+from ..database.dal import pcr_sqla, pcr_date
 from ..setting import WebSetting
 from ..webui.status_data import build_boss_status
 
@@ -57,7 +57,28 @@ async def build_status_payload(bot, group_id, clan_info):
     }
 
 
-async def render_status_image(payload):
+def build_daily_payload(stats, clan_name, target_time, label, roster_known):
+    groups = {count: [] for count in (3, 2.5, 2, 1.5, 1, 0.5, 0)}
+    total = 0
+    for player_id, name, count in stats:
+        count = min(count, 3)
+        groups[count].append({"id": str(player_id), "name": name})
+        total += count
+    return {
+        "clan_name": clan_name,
+        "label": label,
+        "date": pcr_date(target_time).strftime("%Y-%m-%d"),
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "roster_known": roster_known,
+        "total": total,
+        "member_count": len(stats),
+        "complete_count": len(groups[3]),
+        "zero_count": len(groups[0]) if roster_known else None,
+        "groups": [{"count": count, "members": members} for count, members in groups.items() if members],
+    }
+
+
+async def render_status_image(payload, view="status"):
     # Lazy import: deployments without Playwright still retain text status.
     from playwright.async_api import async_playwright
 
@@ -65,6 +86,11 @@ async def render_status_image(payload):
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.netloc:
         raise ValueError("WebSetting.status_image_url 必须是已部署 WebUI 的 HTTP(S) 地址")
+    if view == "daily":
+        # Reuse the configured frontend origin and deployment subpath.
+        url = parts._replace(fragment="/daily-knives-image").geturl()
+    elif view != "status":
+        raise ValueError("未知的截图页面")
     async with _render_lock:
         async with async_playwright() as playwright:
             options = {"headless": True}

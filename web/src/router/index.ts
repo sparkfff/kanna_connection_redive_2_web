@@ -19,6 +19,12 @@ function redirectToDashboardTab(tab: 'report' | 'notice') {
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/daily-knives-image',
+    name: 'DailyKnivesImage',
+    component: () => import('@/views/DailyKnivesImage.vue'),
+    meta: { title: '出刀统计', requiresAuth: false }
+  },
+  {
     path: '/status-image',
     name: 'StatusImage',
     component: () => import('@/views/StatusImage.vue'),
@@ -101,7 +107,7 @@ router.beforeEach(async (to, _from, next) => {
 
   // Read-only image view: its data is injected by the bot's isolated browser.
   // It never uses cookies or exposes an unauthenticated group API.
-  if (to.name === 'StatusImage') return next()
+  if (to.name === 'StatusImage' || to.name === 'DailyKnivesImage') return next()
 
   const userStore = useUserStore()
 

@@ -707,6 +707,7 @@
 
 <script setup lang="ts">
 import { bossAvatarUrl } from '@/utils/boss'
+import { daoNumColor } from '@/utils/dao'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { use } from 'echarts/core'
@@ -1193,18 +1194,6 @@ function avatarBgColor(name: string | undefined | null): string {
 }
 
 // 今日出刀分布：按刀数给徽标配色（刀数越多越绿，越少越红，未出刀为灰）
-function daoNumColor(dao: number): string {
-  const map: Record<number, string> = {
-    3: '#10b981', // 3 刀 绿（已出满）
-    2.5: '#14b8a6', // 2.5 刀 青
-    2: '#f59e0b', // 2 刀 琥珀
-    1.5: '#f97316', // 1.5 刀 橙
-    1: '#f43f5e', // 1 刀 玫红
-    0.5: '#ef4444', // 0.5 刀（补时） 红
-    0: '#94a3b8', // 未出刀 灰
-  }
-  return map[dao] || '#6366f1'
-}
 
 // 今日出刀分布：玩家名标签跟随该行刀数配色（同色浅底 + 同色文字/边框）
 function distTagStyle(dao: number): Record<string, string> {

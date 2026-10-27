@@ -517,12 +517,24 @@ async def dao_state(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "未开启出刀监控,不显示没出刀的人")
     else:
         members = clanbattle_info[group_id].members
-    data = (
-        await pcr_sqla.get_day_rcords(int(time.time()), group_id)
-        if "今日" in ev.raw_message
-        else await pcr_sqla.get_day_rcords(int(time.time()) - 3600 * 24, group_id)
-    )
-    await bot.send(ev, await get_stat(await day_report(data, members)))
+    today = "今日" in ev.raw_message
+    target_time = int(time.time()) - (0 if today else 3600 * 24)
+    data = await pcr_sqla.get_day_rcords(target_time, group_id)
+    stats = await day_report(data or [], members)
+    try:
+        from .status_image import build_daily_payload, render_status_image
+
+        clan_info = clanbattle_info.get(group_id)
+        payload = build_daily_payload(
+            stats, clan_info.clan_name if clan_info else f"群 {group_id}",
+            target_time, "今日出刀" if today else "昨日出刀", bool(members),
+        )
+        picture = await asyncio.wait_for(render_status_image(payload, view="daily"), timeout=70)
+        await bot.send(ev, picture)
+        return
+    except Exception as e:
+        logger.warning(f"出刀统计图片渲染失败，回退原图 group={group_id}: {e}")
+    await bot.send(ev, await get_stat(stats))
 
 
 @sv.on_fullmatch("启用肃正协议")
