@@ -63,7 +63,7 @@ help_text = """
 【sl?】栞栞今天有没有用过sl
 【申请出刀 + 数字 + （留言） 】 申请打boss，boss死亡自动清空
 【进1～进5】快速申请对应boss，也可附加留言，例如【进3 合刀】
-【取消申请】 模拟10次挂10次，老子不打了
+【取消申请】/【不打了】取消本人的出刀申请
 【清空申请】（仅）管理，清空预约
 【修正出刀 + 出刀编号 + (完整刀|尾刀|补偿)"】修正错误刀（出刀编号可以通过查看个人战报获得）
 【会战KPI】查看等效出刀数
@@ -506,6 +506,7 @@ async def apply(bot: HoshinoBot, ev: CQEvent):
 
 
 @sv.on_prefix("取消申请")
+@sv.on_fullmatch("不打了")
 @check_priv_adimin()
 async def cancel_apply(bot: HoshinoBot, ev: CQEvent, qq_id: int):
 
