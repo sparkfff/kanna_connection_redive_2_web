@@ -25,6 +25,7 @@ from ..login import run_group
 from ..util.task_pool import PoolBase, PrioritizedQueryItemBase
 from ..util.tools import anywhere_send
 from ..util.auto_boss import clan_boss_info
+from ..util.knife_policy import classify_knife
 from .base import find_item, format_bignum, format_precent
 from .damage_correction import DamageCorrectionTracker
 
@@ -207,6 +208,7 @@ class ClanBattle:
         time_line = await self.client.time_line_report(
             pcrid, self.clan_battle_id, record.battle_log_id
         )
+        policy = await pcr_sqla.get_first_day_carry_policy(self.group_id)
         temp_dict = {
             "group_id": self.group_id,
             "battle_log_id": time % 10000000,  # 这玩意居然会重复，受不了，直接取时间
@@ -221,13 +223,10 @@ class ClanBattle:
             "pcrid": pcrid,
             "remain_time": time_line.start_remain_time,
             "battle_time": time_line.battle_time,
-            "flag": (
-                0.5 if time_line.start_remain_time < 90 else (
-                    1 if (
-                        time_line.battle_time < time_line.start_remain_time
-                        or (allow_damage_correction and self.damage_correction.is_kill(record))
-                    ) else 0
-                )
+            "flag": classify_knife(
+                time_line.start_remain_time, time_line.battle_time,
+                allow_damage_correction and self.damage_correction.is_kill(record),
+                time, policy,
             ),
         }
         for i, unit in enumerate(record.units):

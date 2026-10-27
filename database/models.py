@@ -279,7 +279,7 @@ class ClanBattleMember(DataBase, table=True):
 class GroupSetting(DataBase, table=True):
     """群级设置（**按群独立**，一个群一行）
 
-    目前只有「主动推送」一个开关：出刀监控跑起来之后，bot 会主动往群里播报
+    「主动推送」开关：出刀监控跑起来之后，bot 会主动往群里播报
     出刀人数 / 出刀伤害 / 预约 / 挂树这些消息，群里嫌吵可以用【关闭推送】关掉。
     开关只影响本群，别的群不受影响。
 
@@ -289,6 +289,8 @@ class GroupSetting(DataBase, table=True):
     __table_args__ = {"keep_existing": True}
     group_id: int = Field(primary_key=True, title="所属群")
     push_enabled: bool = Field(default=True, title="主动推送")
+    first_day_carry_enabled: bool = Field(default=False, title="首日满补模式")
+    first_day_carry_date: str = Field(default="", title="本期首日游戏日期")
 
 
 class BlackUnit(DataBase, table=True):

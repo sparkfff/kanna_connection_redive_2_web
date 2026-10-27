@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlmodel import SQLModel, func
 
 from ..basedata import FilePath, NoticeType
+from ..util.knife_policy import first_day_carry_active, first_day_window
 from .models import (
     Account,
     ArenaSetting,
@@ -35,6 +36,8 @@ from .models import (
 # 老库补列清单：(表名, 列名, 列定义)
 # 加字段时在这里补一条，剩下的交给 SQALA._run_migrations 幂等执行。
 _COLUMN_MIGRATIONS = [
+    ("groupsetting", "first_day_carry_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("groupsetting", "first_day_carry_date", "VARCHAR NOT NULL DEFAULT ''"),
     # 游戏账号的归属群（0 = 全局号，即 QQ 私聊绑定的那个）
     ("account", "group_id", "INTEGER NOT NULL DEFAULT 0"),
     # 5 星彩装的词条（JSON）。这张表是随「网页端普通 EX 槽」一起加的，先跑过的库
@@ -216,6 +219,7 @@ class SQALA:
                 session.add_all(dao_list)
 
     async def correct_kill_damage(self, group_id: int, caps: dict, kills=()):
+        policy = await self.get_first_day_carry_policy(group_id)
         async with self.async_session() as session:
             async with session.begin():
                 for key in dict.fromkeys((*caps, *kills)):
@@ -235,7 +239,9 @@ class SQALA:
                         record = records[0]
                         if cap is not None and record.damage > cap:
                             record.damage = cap
-                        if record.flag != 0.5:
+                        if record.flag != 0.5 or (
+                            record.remain_time >= 90 and first_day_carry_active(policy, record.time)
+                        ):
                             record.flag = 1
 
     async def get_record_keys_at(self, group_id: int, timestamp: int) -> set:
@@ -875,9 +881,42 @@ class SQALA:
         """写入本群的「主动推送」开关（按群 upsert）"""
         async with self.async_session() as session:
             async with session.begin():
-                await session.merge(
-                    GroupSetting(group_id=int(group_id), push_enabled=bool(enabled))
-                )
+                setting = await session.get(GroupSetting, int(group_id))
+                if setting is None:
+                    setting = GroupSetting(group_id=int(group_id))
+                    session.add(setting)
+                setting.push_enabled = bool(enabled)
+
+    async def get_first_day_carry_policy(self, group_id: int) -> dict:
+        async with self.async_session() as session:
+            setting = await session.get(GroupSetting, int(group_id))
+            return {
+                "enabled": bool(setting and setting.first_day_carry_enabled),
+                "date": setting.first_day_carry_date if setting else "",
+            }
+
+    async def set_first_day_carry_policy(self, group_id: int, enabled: bool, day=None) -> int:
+        window = first_day_window(day) if enabled else None
+        async with self.async_session() as session:
+            async with session.begin():
+                setting = await session.get(GroupSetting, int(group_id))
+                if setting is None:
+                    setting = GroupSetting(group_id=int(group_id))
+                    session.add(setting)
+                setting.first_day_carry_enabled = bool(enabled)
+                if day is not None:
+                    setting.first_day_carry_date = day
+                if window:
+                    result = await session.execute(
+                        update(RecordDao).where(
+                            RecordDao.group_id == int(group_id),
+                            RecordDao.time >= window[0],
+                            RecordDao.time < window[1],
+                            RecordDao.flag == 0,
+                        ).values(flag=0.5)
+                    )
+                    return result.rowcount
+                return 0
 
     async def init_jjc_setting(self, user_setting: ArenaSetting):
         async with self.async_session() as session:
