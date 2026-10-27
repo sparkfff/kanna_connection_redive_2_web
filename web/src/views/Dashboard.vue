@@ -158,8 +158,8 @@
                     <div class="boss-name">{{ cell.boss?.name || '未知' }}</div>
                   </div>
                 </div>
-                <div class="boss-lap" v-if="cell.boss?.lap">
-                  {{ cell.boss?.lap }} 周目
+                <div class="boss-lap" v-if="cell.boss?.lap" :class="bossLapLevel(cell.boss.lap, data.boss)">
+                  {{ bossLapLabel(cell.boss.lap, data.boss) }}
                 </div>
               </div>
 
@@ -678,7 +678,7 @@
 </template>
 
 <script setup lang="ts">
-import { bossAvatarUrl } from '@/utils/boss'
+import { bossAvatarUrl, bossLapLevel, bossLapLabel } from '@/utils/boss'
 import KnifeDistribution from '@/components/KnifeDistribution.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -1846,6 +1846,16 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+}
+.boss-lap.low,
+html.dark .boss-lap.low {
+  background: #159a92;
+  color: #fff;
+}
+.boss-lap.high,
+html.dark .boss-lap.high {
+  background: #8554c8;
+  color: #fff;
 }
 .hp-bar {
   margin-bottom: 6px;

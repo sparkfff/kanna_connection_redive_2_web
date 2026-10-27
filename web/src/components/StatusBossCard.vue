@@ -1,12 +1,12 @@
 <template>
-  <article class="status-boss">
+  <article class="status-boss" :class="lapLevel">
     <header class="boss-heading">
       <img v-if="boss.id && !failed" :src="bossAvatarUrl(boss.id)" @error="failed = true" alt="" />
       <div v-else class="boss-placeholder">{{ order }}</div>
       <div class="heading-content">
         <div class="title-line">
           <h2>{{ order }} · {{ boss.name || '未知 BOSS' }}</h2>
-          <span class="lap">{{ boss.lap || '—' }} 周目</span>
+          <span class="lap" :class="lapLevel">{{ lapLevel === 'high' ? '高周目 · ' : lapLevel === 'low' ? '低周目 · ' : '' }}{{ boss.lap || '—' }} 周目</span>
         </div>
         <div class="hp-track">
           <div class="hp-fill" :style="{ width: `${percent}%` }"></div>
@@ -33,8 +33,9 @@
 import { computed, ref } from 'vue'
 import type { StatusBoss } from '@/types/statusImage'
 import { bossAvatarUrl } from '@/utils/boss'
+import type { LapLevel } from '@/utils/boss'
 
-const props = defineProps<{ boss: StatusBoss; order: number }>()
+const props = defineProps<{ boss: StatusBoss; order: number; lapLevel?: LapLevel }>()
 const failed = ref(false)
 const percent = computed(() => props.boss.max_hp ? Math.max(0, Math.min(100, props.boss.current_hp / props.boss.max_hp * 100)) : 0)
 const sections = computed(() => ([
@@ -46,6 +47,8 @@ const sections = computed(() => ([
 
 <style scoped>
 .status-boss { background: #fffdf2; border: 1px solid #fff; border-radius: 14px; padding: 15px; box-shadow: 0 5px 0 #dacf9e50; }
+.status-boss.low { border-top: 4px solid #159a92; padding-top: 12px; }
+.status-boss.high { border-top: 4px solid #8554c8; padding-top: 12px; }
 .boss-heading { display: flex; align-items: center; gap: 12px; margin-bottom: 13px; }
 .boss-heading img, .boss-placeholder { width: 66px; height: 66px; flex-shrink: 0; border-radius: 12px; object-fit: cover; }
 .boss-placeholder { display: grid; place-items: center; background: #ecdcb6; color: #866a40; font-size: 32px; font-weight: 800; }
@@ -53,6 +56,8 @@ const sections = computed(() => ([
 .title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
 h2 { font-size: 21px; line-height: 1.25; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
 .lap { white-space: nowrap; background: #e86376; border-radius: 12px; padding: 1px 10px; color: white; font-size: 17px; }
+.lap.low { background: #159a92; font-size: 15px; }
+.lap.high { background: #8554c8; font-size: 15px; }
 .hp-track { height: 25px; background: #e9e5d5; border-radius: 20px; overflow: hidden; position: relative; text-align: center; color: #302619; font-size: 15px; font-weight: 700; }
 .hp-fill { height: 100%; background: #f36a6a; }
 .hp-track span { position: absolute; inset: 0; line-height: 25px; text-shadow: 0 0 3px #fff; }

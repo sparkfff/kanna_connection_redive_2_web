@@ -15,10 +15,10 @@
           <div class="summary-line">今日尾刀 <b>{{ data.tail_count }}</b><i>·</i>今日补偿刀 <b>{{ data.carry_count }}</b></div>
           <div class="summary-line">监控人：{{ data.monitor_name }}</div>
         </section>
-        <StatusBossCard v-for="(boss, index) in data.boss.slice(0, 2)" :key="index" :boss="boss" :order="index + 1" />
+        <StatusBossCard v-for="(boss, index) in data.boss.slice(0, 2)" :key="index" :boss="boss" :order="index + 1" :lap-level="bossLapLevel(boss.lap, data.boss)" />
       </div>
       <div class="board-column">
-        <StatusBossCard v-for="(boss, index) in data.boss.slice(2)" :key="index" :boss="boss" :order="index + 3" />
+        <StatusBossCard v-for="(boss, index) in data.boss.slice(2)" :key="index" :boss="boss" :order="index + 3" :lap-level="bossLapLevel(boss.lap, data.boss)" />
       </div>
     </div>
     <footer class="board-footer">刀数为今日已记录战报 · 名单显示近 24 小时记录<br />近期入场人数来自游戏接口，不代表全部未结算成员</footer>
@@ -29,6 +29,7 @@
 <script setup lang="ts">
 import StatusBossCard from '@/components/StatusBossCard.vue'
 import type { StatusImageData } from '@/types/statusImage'
+import { bossLapLevel } from '@/utils/boss'
 
 // The bot injects the payload before navigation. No public group-id endpoint,
 // login bypass, URL credentials, localStorage or cross-page session is needed.
