@@ -22,10 +22,14 @@ class DamageCorrectionTracker:
         self.previous_valid = False
         self.events = OrderedDict()
         self.pending_caps = {}
+        self.pending_kills = set()
+        self.ambiguous_keys = set()
 
     def reset(self, top):
         self.events.clear()
         self.pending_caps.clear()
+        self.pending_kills.clear()
+        self.ambiguous_keys.clear()
         for history in top.damage_history or []:
             self.events[history_identity(history)] = (history_key(history), None)
         self._snapshot(top)
@@ -117,9 +121,12 @@ class DamageCorrectionTracker:
             key, cap = self.events[history_identity(history)]
             if cap is not None and counts[key] == 1:
                 self.pending_caps[key] = cap
+            if history.kill and counts[key] == 1 and key not in self.ambiguous_keys:
+                self.pending_kills.add(key)
         for key in list(self.pending_caps):
             if counts.get(key) != 1:
                 del self.pending_caps[key]
+        self.pending_kills = {key for key in self.pending_kills if counts.get(key) == 1}
 
         self._snapshot(top)
         # Keep at most a day's history; leave room for delayed detailed reports.
@@ -134,11 +141,21 @@ class DamageCorrectionTracker:
         return matches[0] if len(matches) == 1 else None
 
     def invalidate_keys(self, keys):
+        self.ambiguous_keys.update(keys)
         for identity, (key, cap) in list(self.events.items()):
             if key in keys:
                 self.events[identity] = (key, None)
         for key in keys:
             self.pending_caps.pop(key, None)
+            self.pending_kills.discard(key)
+
+    def is_kill(self, record):
+        key = (record.target_viewer_id, record.lap_num,
+               record.order_num, record.battle_end_time)
+        if key in self.ambiguous_keys:
+            return False
+        matches = [identity[3] for identity, (event_key, _) in self.events.items() if event_key == key]
+        return len(matches) == 1 and bool(matches[0])
 
     def history_damage(self, history):
         cap = self.cap_for(history_key(history))

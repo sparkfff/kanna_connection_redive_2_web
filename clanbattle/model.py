@@ -222,9 +222,12 @@ class ClanBattle:
             "remain_time": time_line.start_remain_time,
             "battle_time": time_line.battle_time,
             "flag": (
-                1
-                if time_line.battle_time < time_line.start_remain_time
-                else (0.5 if time_line.start_remain_time < 90 else 0)
+                0.5 if time_line.start_remain_time < 90 else (
+                    1 if (
+                        time_line.battle_time < time_line.start_remain_time
+                        or (allow_damage_correction and self.damage_correction.is_kill(record))
+                    ) else 0
+                )
             ),
         }
         for i, unit in enumerate(record.units):
@@ -344,11 +347,12 @@ class ClanBattle:
         for history in self.damage_correction.update(clan_battle_top):
             damage = self.damage_correction.history_damage(history)
             correction = (
-                f"（原始伤害{history.damage}，已扣除超量伤害）"
+                f"（原始伤害{history.damage}）"
                 if damage < history.damage else ""
             )
             self.notice_dao.append(
-                f"{history.name}对{history.lap_num}周目{history.order_num}王造成了{damage}点伤害。{correction}"
+                f"{history.name}对{history.lap_num}周目{history.order_num}王造成{damage}点伤害"
+                f"{'并击破' if history.kill else ''}{correction}。"
             )
             # 通知挂树，清空申请出刀
             if history.kill:
@@ -365,11 +369,13 @@ class ClanBattle:
         # A detailed report can become visible after top was fetched in the
         # previous iteration. Fix that already-saved row as well as new inserts.
         pending = dict(self.damage_correction.pending_caps)
-        if pending:
-            await pcr_sqla.correct_kill_damage(self.group_id, pending)
+        kills = set(self.damage_correction.pending_kills)
+        if pending or kills:
+            await pcr_sqla.correct_kill_damage(self.group_id, pending, kills)
             for key, cap in pending.items():
                 if self.damage_correction.pending_caps.get(key) == cap:
                     del self.damage_correction.pending_caps[key]
+            self.damage_correction.pending_kills.difference_update(kills)
 
     async def all_member(self):
         clan = await self.client.clan_info(self.clan_id)

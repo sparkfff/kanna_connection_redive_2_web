@@ -215,10 +215,12 @@ class SQALA:
             async with session.begin():
                 session.add_all(dao_list)
 
-    async def correct_kill_damage(self, group_id: int, caps: dict):
+    async def correct_kill_damage(self, group_id: int, caps: dict, kills=()):
         async with self.async_session() as session:
             async with session.begin():
-                for (pcrid, lap, boss, timestamp), cap in caps.items():
+                for key in dict.fromkeys((*caps, *kills)):
+                    pcrid, lap, boss, timestamp = key
+                    cap = caps.get(key)
                     result = await session.execute(
                         select(RecordDao).where(
                             RecordDao.group_id == group_id,
@@ -229,8 +231,12 @@ class SQALA:
                         )
                     )
                     records = result.scalars().all()
-                    if len(records) == 1 and records[0].damage > cap:
-                        records[0].damage = cap
+                    if len(records) == 1:
+                        record = records[0]
+                        if cap is not None and record.damage > cap:
+                            record.damage = cap
+                        if record.flag != 0.5:
+                            record.flag = 1
 
     async def get_record_keys_at(self, group_id: int, timestamp: int) -> set:
         async with self.async_session() as session:
