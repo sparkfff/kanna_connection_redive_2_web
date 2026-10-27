@@ -27,6 +27,8 @@ all_seq = {
 
 buffer_path = str(JJCSetting.buff_path.value / "buffer.json")
 buffer = load_config(buffer_path)
+if not isinstance(buffer, dict):
+    buffer = {}
 best_atk_records_path = str(JJCSetting.buff_path.value / "best_atk_records.json")
 
 
@@ -41,8 +43,11 @@ async def update_record_start():
 
 def update_record():
     buffer_region_cnt = [{}, {}, {}, {}, {}]  # 全服=1 b服=2 台服=3 日服=4
-    tot_file_cnt = len(os.listdir(buffer_path))
-    for filename in os.listdir(buffer_path):  # 我为什么不用buffer.json 我是猪鼻
+    cache_dir = JJCSetting.buff_path.value
+    os.makedirs(cache_dir, exist_ok=True)
+    filenames = os.listdir(cache_dir)
+    tot_file_cnt = len(filenames)
+    for filename in filenames:
         if len(filename) != 26:
             continue
 
@@ -204,9 +209,13 @@ async def do_query(id_list: List[int], region: int = 1) -> Union[str, List[dict]
                 raise
 
             logger.info("保存结果至缓存库")
-            buffer[key] = int(now_time)
-            write_config(buffer_path, buffer)
-            write_config(str(JJCSetting.buff_path.value / f"{key}.json"), result)
+            try:
+                os.makedirs(JJCSetting.buff_path.value, exist_ok=True)
+                write_config(key_path, result)
+                buffer[key] = int(now_time)
+                write_config(buffer_path, buffer)
+            except Exception as e:
+                logger.warning(f"查询成功，但缓存写入失败：{e}")
         except Exception:
             if not degrade_result:
                 logger.info("查询失败并且无缓存，查询近似解")
