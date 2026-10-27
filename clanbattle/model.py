@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import time
+from collections import Counter
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -25,6 +26,7 @@ from ..util.task_pool import PoolBase, PrioritizedQueryItemBase
 from ..util.tools import anywhere_send
 from ..util.auto_boss import clan_boss_info
 from .base import find_item, format_bignum, format_precent
+from .damage_correction import DamageCorrectionTracker
 
 from traceback import format_exc
 
@@ -46,6 +48,7 @@ class ClanBattle:
         self.clan_name = ""
         self.period = ""
         self.dao_update_time = 0  # 网页端更新标记
+        self.damage_correction = DamageCorrectionTracker()
         self.fighter_update_time = 0  # 网页端战斗人数更新标记
         self.rank_update_time = 0  # 网页端会战排名更新标记
 
@@ -88,6 +91,7 @@ class ClanBattle:
         self.lap_num = clan_battle_top.lap_num
         self.period = clan_boss_info.lap2stage(self.lap_num)
         self.refresh_latest_time(clan_battle_top)
+        self.damage_correction.reset(clan_battle_top)
         self.members: Dict[int, str] = await self.all_member()
         self.dao_update_time = int(time.time())
 
@@ -168,21 +172,37 @@ class ClanBattle:
                 return  # 数据空
 
             latest_time = await pcr_sqla.get_latest_time(self.group_id)
+            existing_keys = await pcr_sqla.get_record_keys_at(self.group_id, latest_time)
             for page in range(log_temp.max_page, 0, -1):
                 log = await self.get_battle_log(page)
-                if log.battle_list[-1].battle_end_time <= latest_time:
+                if not log.battle_list:
+                    continue
+                if log.battle_list[-1].battle_end_time < latest_time:
                     break
                 log_list += log.battle_list[::-1]
+            key_counts = Counter(
+                (r.target_viewer_id, r.lap_num, r.order_num, r.battle_end_time)
+                for r in log_list
+            )
+            self.damage_correction.invalidate_keys(
+                {key for key, count in key_counts.items() if count > 1}
+            )
             for record in log_list[::-1]:
                 if loop_num != self.loop_num:
                     raise CancelledError
-                if (time := record.battle_end_time) > latest_time:
-                    record_dao = await self.general_single_record(record, time)
+                time = record.battle_end_time
+                key = (record.target_viewer_id, record.lap_num, record.order_num, time)
+                if time >= latest_time and key not in existing_keys:
+                    record_dao = await self.general_single_record(
+                        record, time, allow_damage_correction=key_counts[key] == 1
+                    )
                     dao_list.append(record_dao)
         if dao_list:
             await pcr_sqla.add_record(dao_list)
 
-    async def general_single_record(self, record: BattleInfo, time: int) -> RecordDao:
+    async def general_single_record(
+        self, record: BattleInfo, time: int, allow_damage_correction: bool = True
+    ) -> RecordDao:
         pcrid = record.target_viewer_id
         time_line = await self.client.time_line_report(
             pcrid, self.clan_battle_id, record.battle_log_id
@@ -193,15 +213,21 @@ class ClanBattle:
             "name": record.user_name,
             "lap": record.lap_num,
             "boss": record.order_num,
-            "damage": record.total_damage,
+            "damage": (
+                self.damage_correction.record_damage(record)
+                if allow_damage_correction else record.total_damage
+            ),
             "time": time,
             "pcrid": pcrid,
             "remain_time": time_line.start_remain_time,
             "battle_time": time_line.battle_time,
             "flag": (
-                1
-                if time_line.battle_time < time_line.start_remain_time
-                else (0.5 if time_line.start_remain_time < 90 else 0)
+                0.5 if time_line.start_remain_time < 90 else (
+                    1 if (
+                        time_line.battle_time < time_line.start_remain_time
+                        or (allow_damage_correction and self.damage_correction.is_kill(record))
+                    ) else 0
+                )
             ),
         }
         for i, unit in enumerate(record.units):
@@ -318,11 +344,22 @@ class ClanBattle:
         return change
 
     async def record_change(self, clan_battle_top: ClanBattleTopResponse):
-        for history in clan_battle_top.damage_history:
-            if history.create_time <= self.latest_time:
-                break
+        for history in self.damage_correction.update(clan_battle_top):
+            if await pcr_sqla.clear_finished_application(
+                self.group_id, history.viewer_id, history.order_num,
+                history.lap_num, history.create_time,
+            ):
+                from . import notice_update_time
+
+                notice_update_time[self.group_id] = int(time.time())
+            damage = self.damage_correction.history_damage(history)
+            correction = (
+                f"（原始伤害{history.damage}）"
+                if damage < history.damage else ""
+            )
             self.notice_dao.append(
-                f"{history.name}对{history.lap_num}周目{history.order_num}王造成了{history.damage}点伤害。"
+                f"{history.name}对{history.lap_num}周目{history.order_num}王造成{damage}点伤害"
+                f"{'并击破' if history.kill else ''}{correction}。"
             )
             # 通知挂树，清空申请出刀
             if history.kill:
@@ -334,6 +371,18 @@ class ClanBattle:
 
         self.dao_update_time = int(time.time())
         self.refresh_latest_time(clan_battle_top)
+
+    async def reconcile_damage(self):
+        # A detailed report can become visible after top was fetched in the
+        # previous iteration. Fix that already-saved row as well as new inserts.
+        pending = dict(self.damage_correction.pending_caps)
+        kills = set(self.damage_correction.pending_kills)
+        if pending or kills:
+            await pcr_sqla.correct_kill_damage(self.group_id, pending, kills)
+            for key, cap in pending.items():
+                if self.damage_correction.pending_caps.get(key) == cap:
+                    del self.damage_correction.pending_caps[key]
+            self.damage_correction.pending_kills.difference_update(kills)
 
     async def all_member(self):
         clan = await self.client.clan_info(self.clan_id)
@@ -422,17 +471,18 @@ class ClanBattlePool(PoolBase):
                     clan_info.period = temp
 
                     # 刷新状态，提醒预约
-            change = await clan_info.refresh_boss(clan_battle_top)
+            await clan_info.refresh_boss(clan_battle_top)
             await clan_info.send_notice(
                 [NoticeType.subscribe.value, NoticeType.fighter.value]
             )
 
-            if change:  # 报刀，清空申请，挂树
-                await clan_info.record_change(clan_battle_top)
-                await clan_info.send_notice(
-                    [NoticeType.dao.value, NoticeType.tree.value]
-                )
+            # Damage histories can change even when a snapshot's HP does not.
+            await clan_info.record_change(clan_battle_top)
+            await clan_info.send_notice(
+                [NoticeType.dao.value, NoticeType.tree.value]
+            )
             await clan_info.add_record(loop_num)
+            await clan_info.reconcile_damage()
             clan_info.error_count = 0
         asyncio.create_task(
             self.add_task(

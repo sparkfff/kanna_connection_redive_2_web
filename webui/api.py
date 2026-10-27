@@ -25,6 +25,7 @@ from ..basedata import GroupPriority, NoticeType, Platform
 from ..setting import WebSetting
 from .util import *
 from .web_model import *
+from .status_data import build_boss_status
 from nonebot import logger, on_startup
 
 from sse_starlette.sse import EventSourceResponse
@@ -201,16 +202,9 @@ async def home_info(token: CookieCache = Depends(verify_cookie)):
 @api_router.get("/{group_id}/dashboard")
 async def dashboard_info(group_id: int, token: CookieCache = Depends(verify_group_access)):
     now = int(time.time())
-    boss_info = clan_boss_info.boss_info
     user_id = int(token.user_id)
     response = DashboardResponse()
-    response.boss = [
-        BossInfoCounter(
-            name=boss_info[i].name,
-            id=boss_info[i].boss_id,
-        )
-        for i in range(5)
-    ]
+    response.boss = [BossInfoCounter(**boss) for boss in build_boss_status()]
     response.user_id = user_id
     if web_user := await pcr_sqla.web_query_user(user_id):
         response.priority = web_user.priority
@@ -232,17 +226,7 @@ async def dashboard_info(group_id: int, token: CookieCache = Depends(verify_grou
             response.state = "开启" + (
                 "(高占用)" if now - clan_info.loop_check > 30 else ""
             )
-            response.boss = [
-                BossInfoCounter(
-                    name=boss_info[i].name,
-                    id=boss_info[i].boss_id,
-                    fighter=boss.fighter_num,
-                    current_hp=boss.current_hp,
-                    max_hp=boss.max_hp,
-                    lap=boss.lap_num,
-                )
-                for i, boss in enumerate(clan_info.boss)
-            ]
+            response.boss = [BossInfoCounter(**boss) for boss in build_boss_status(clan_info)]
     # 出刀监控开启时带上完整公会名单，"今日出刀分布"才能显示 0 刀（未出刀）成员
     members = clan_info.members if clan_info else {}
     if dao_data := await pcr_sqla.get_day_rcords(now, group_id):

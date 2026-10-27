@@ -1,3 +1,4 @@
+import asyncio
 import re
 import time
 from typing import Dict
@@ -51,7 +52,7 @@ help_text = """
 【启用肃正协议】数据出现异常使用即可清空所有数据（危险！！！）
 【状态】查看当前进度
 【预约表】栞栞谁预约了
-【预约 + 数字 + （周目）+ （留言） 】预约boss, 周目和留言可不写，默认当前周目
+【预约 + 数字 + （周目）+ （留言） 】预约boss；不填周目时，存活boss预约下一周目，未开放boss预约显示周目
 【取消预约 + （数字）】取消预约
 【清空预约 + （数字）】（仅）管理，清空预约
 【查树】栞栞树上有几个人
@@ -61,7 +62,8 @@ help_text = """
 【sl】记录sl
 【sl?】栞栞今天有没有用过sl
 【申请出刀 + 数字 + （留言） 】 申请打boss，boss死亡自动清空
-【取消申请】 模拟10次挂10次，老子不打了
+【进1～进5】快速申请对应boss，也可附加留言，例如【进3 合刀】
+【取消申请】/【不打了】取消本人的出刀申请
 【清空申请】（仅）管理，清空预约
 【修正出刀 + 出刀编号 + (完整刀|尾刀|补偿)"】修正错误刀（出刀编号可以通过查看个人战报获得）
 【会战KPI】查看等效出刀数
@@ -199,6 +201,15 @@ async def daostate(bot: HoshinoBot, ev: CQEvent):
         return
 
     clan_info = clanbattle_info[group_id]
+    try:
+        from .status_image import build_status_payload, render_status_image
+
+        payload = await build_status_payload(bot, group_id, clan_info)
+        picture = await asyncio.wait_for(render_status_image(payload), timeout=70)
+        await bot.send(ev, picture)
+        return
+    except Exception as e:
+        logger.warning(f"状态图片渲染失败，回退文字 group={group_id}: {e}")
     now = time.time()
     msg = f"当前排名：{clan_info.rank}\n监控状态："
     if clan_info.loop_check:
@@ -319,6 +330,18 @@ async def subscirbe(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "不约，滚")
         return
 
+    if match.group(2) is None:
+        clan_info = clanbattle_info.get(ev.group_id)
+        if (
+            clan_info is None
+            or not clan_info.loop_check
+            or clan_info.boss[boss - 1].lap_num <= 0
+        ):
+            await bot.send(ev, "未获取到当前Boss进度，请开启出刀监控，或指定周目，例如【预约 1 36】")
+            return
+        current_boss = clan_info.boss[boss - 1]
+        lap = current_boss.lap_num + (1 if current_boss.current_hp > 0 else 0)
+
     text = text[1:] if (text := match.group(3)) else ""
     await pcr_sqla.add_notice(
         NoticeCache(
@@ -331,7 +354,7 @@ async def subscirbe(bot: HoshinoBot, ev: CQEvent):
         )
     )
     notice_update_time[ev.group_id] = int(time.time())
-    await bot.send(ev, "预约成功", at_sender=True)
+    await bot.send(ev, f"预约成功：{lap}周目{boss}王" if lap else f"预约成功：当前周目{boss}王", at_sender=True)
 
 
 @sv.on_fullmatch("预约表", only_to_me=False)
@@ -449,7 +472,7 @@ async def checktree(bot: HoshinoBot, ev: CQEvent):
     await bot.send(ev, reply or "目前树上空空如也")
 
 
-@sv.on_rex(r"^申请出刀\s?(\d)\s?(\S+)?$")
+@sv.on_rex(r"^(?:申请出刀|进)\s?([1-5])(?!\d)\s?(\S+)?$")
 async def apply(bot: HoshinoBot, ev: CQEvent):
 
     match: re.Match = ev["match"]
@@ -483,6 +506,7 @@ async def apply(bot: HoshinoBot, ev: CQEvent):
 
 
 @sv.on_prefix("取消申请")
+@sv.on_fullmatch("不打了")
 @check_priv_adimin()
 async def cancel_apply(bot: HoshinoBot, ev: CQEvent, qq_id: int):
 
@@ -507,12 +531,24 @@ async def dao_state(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "未开启出刀监控,不显示没出刀的人")
     else:
         members = clanbattle_info[group_id].members
-    data = (
-        await pcr_sqla.get_day_rcords(int(time.time()), group_id)
-        if "今日" in ev.raw_message
-        else await pcr_sqla.get_day_rcords(int(time.time()) - 3600 * 24, group_id)
-    )
-    await bot.send(ev, await get_stat(await day_report(data, members)))
+    today = "今日" in ev.raw_message
+    target_time = int(time.time()) - (0 if today else 3600 * 24)
+    data = await pcr_sqla.get_day_rcords(target_time, group_id)
+    stats = await day_report(data or [], members)
+    try:
+        from .status_image import build_daily_payload, render_status_image
+
+        clan_info = clanbattle_info.get(group_id)
+        payload = build_daily_payload(
+            stats, clan_info.clan_name if clan_info else f"群 {group_id}",
+            target_time, "今日出刀" if today else "昨日出刀", bool(members),
+        )
+        picture = await asyncio.wait_for(render_status_image(payload, view="daily"), timeout=70)
+        await bot.send(ev, picture)
+        return
+    except Exception as e:
+        logger.warning(f"出刀统计图片渲染失败，回退原图 group={group_id}: {e}")
+    await bot.send(ev, await get_stat(stats))
 
 
 @sv.on_fullmatch("启用肃正协议")

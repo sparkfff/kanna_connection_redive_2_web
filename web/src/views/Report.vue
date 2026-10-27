@@ -147,8 +147,8 @@
              一次性全渲染会同步阻塞主线程 4.6 秒（CDP longtask 实测：整页 7 秒）。
              所以这里必须分页：默认 50 行/页，配合上面的搜索框已经够用。
              另外**不要给列加 `fixed`** —— 固定列会让 el-table 把那一列的行再渲染一遍，
-             实测是最贵的单项开销；8 列总宽 ~950px，宽屏根本不需要横向固定。 -->
-        <el-table :data="pagedDetail" stripe size="default" max-height="600">
+             实测是最贵的单项开销；窄屏使用表格内部横向滚动，避免数字被挤断。 -->
+        <el-table class="detail-table" :data="pagedDetail" stripe size="default" max-height="600">
           <el-table-column
             type="index"
             label="序号"
@@ -162,10 +162,10 @@
               <el-tag size="small">{{ row.lap }}周目{{ row.boss }}王</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="damage" label="伤害" width="110" align="right" sortable>
+          <el-table-column prop="damage" label="伤害" min-width="140" class-name="detail-number" align="right" sortable>
             <template #default="{ row }">{{ formatNum(row.damage) }}</template>
           </el-table-column>
-          <el-table-column prop="score" label="分数" width="110" align="right" sortable>
+          <el-table-column prop="score" label="分数" min-width="160" class-name="detail-number" align="right" sortable>
             <template #default="{ row }">{{ formatNum(row.score) }}</template>
           </el-table-column>
           <el-table-column label="类型" width="100">
@@ -595,6 +595,11 @@ onBeforeUnmount(() => stopSSE())
 /* 出刀明细的搜索框：桌面端固定 220px（原来是内联 style，手机上盖不掉，改成类名） */
 .detail-search {
   width: 220px;
+}
+.detail-table :deep(.detail-number .cell) {
+  white-space: nowrap;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
 }
 /* 明细分页条：右对齐，和表头那条「搜索框在右」的视觉保持一条线 */
 .detail-pager {

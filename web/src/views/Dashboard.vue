@@ -158,8 +158,8 @@
                     <div class="boss-name">{{ cell.boss?.name || '未知' }}</div>
                   </div>
                 </div>
-                <div class="boss-lap" v-if="cell.boss?.lap">
-                  {{ cell.boss?.lap }} 周目
+                <div class="boss-lap" v-if="cell.boss?.lap" :class="bossLapLevel(cell.boss.lap, data.boss)">
+                  {{ cell.boss.lap }} 周目
                 </div>
               </div>
 
@@ -254,35 +254,7 @@
         <el-col :lg="9" :md="12" :xs="24">
           <div class="kanna-card h-full">
             <div class="card-title">今日出刀分布</div>
-            <el-table :data="data.report" size="small" stripe style="width: 100%">
-              <el-table-column label="刀数" width="100">
-                <template #default="{ row }">
-                  <div class="dao-num-badge" :style="{ background: daoNumColor(row.dao_num) }">
-                    {{ row.dao_num === 0 ? '未出刀' : row.dao_num + ' 刀' }}
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="玩家">
-                <template #default="{ row }">
-                  <span
-                    v-for="(name, i) in row.names"
-                    :key="i"
-                    class="dist-player-tag"
-                    :style="distTagStyle(row.dao_num)"
-                  >
-                    {{ name }}
-                  </span>
-                  <span v-if="!row.names || row.names.length === 0" class="text-muted text-sm">
-                    暂无
-                  </span>
-                </template>
-              </el-table-column>
-              <el-table-column label="人数" width="80" align="center">
-                <template #default="{ row }">
-                  <b>{{ row.names?.length || 0 }}</b>
-                </template>
-              </el-table-column>
-            </el-table>
+            <KnifeDistribution :rows="data.report" />
           </div>
         </el-col>
         <!-- 中：最近出刀 Top 20（截图红框中间位置） -->
@@ -706,6 +678,8 @@
 </template>
 
 <script setup lang="ts">
+import { bossAvatarUrl, bossLapLevel } from '@/utils/boss'
+import KnifeDistribution from '@/components/KnifeDistribution.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { use } from 'echarts/core'
@@ -830,8 +804,6 @@ const bossCount = computed(() => Math.max(1, data.boss.length || 5))
 // 后端 dashboard 的 boss.id 即当期 BOSS unitId（来自 pcr.satroki.tech 的会战数据），
 // 图标资源与 pcrjjc2-clanbattle 一样取自 redive 图标库；加载失败时回退显示序号
 const bossImgFailed = reactive<Record<number, boolean>>({})
-const bossAvatarUrl = (unitId: number) =>
-  `https://redive.estertion.win/icon/unit/${unitId}.webp`
 
 // 把 boss 卡片按每 3 个一张 row 分页；若最后一张 row 不满 3 格，末尾补时钟格占剩下的位置
 // 这样典型的 5 王布局就是：第一行 [1王 2王 3王] + 第二行 [4王 5王 数字时钟]（时钟自动填在第二行最右空白处）
@@ -1194,28 +1166,9 @@ function avatarBgColor(name: string | undefined | null): string {
 }
 
 // 今日出刀分布：按刀数给徽标配色（刀数越多越绿，越少越红，未出刀为灰）
-function daoNumColor(dao: number): string {
-  const map: Record<number, string> = {
-    3: '#10b981', // 3 刀 绿（已出满）
-    2.5: '#14b8a6', // 2.5 刀 青
-    2: '#f59e0b', // 2 刀 琥珀
-    1.5: '#f97316', // 1.5 刀 橙
-    1: '#f43f5e', // 1 刀 玫红
-    0.5: '#ef4444', // 0.5 刀（补时） 红
-    0: '#94a3b8', // 未出刀 灰
-  }
-  return map[dao] || '#6366f1'
-}
 
 // 今日出刀分布：玩家名标签跟随该行刀数配色（同色浅底 + 同色文字/边框）
-function distTagStyle(dao: number): Record<string, string> {
-  const color = daoNumColor(dao)
-  return {
-    background: color + '1a',
-    borderColor: color + '59',
-    color: color,
-  }
-}
+
 
 // 横向条形：这一栏只有 6/24 宽，饼图在这个宽度下 30 个分片根本看不出谁高谁低；
 // 横向条形能同时给出绝对值（条长 + 末端标签）和相对占比（tooltip）。
@@ -1894,6 +1847,16 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 600;
 }
+.boss-lap.low,
+html.dark .boss-lap.low {
+  background: #159a92;
+  color: #fff;
+}
+.boss-lap.high,
+html.dark .boss-lap.high {
+  background: #8554c8;
+  color: #fff;
+}
 .hp-bar {
   margin-bottom: 6px;
 }
@@ -2027,29 +1990,6 @@ onBeforeUnmount(() => {
   font-size: 13px;
   flex-shrink: 0;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
-}
-/* 今日出刀分布 - 刀数徽标（颜色由 daoNumColor 按刀数动态绑定） */
-.dao-num-badge {
-  display: inline-block;
-  min-width: 52px;
-  text-align: center;
-  padding: 3px 10px;
-  border-radius: 6px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-}
-/* 今日出刀分布 - 玩家名标签（底色/文字色随刀数配色动态绑定） */
-.dist-player-tag {
-  display: inline-block;
-  margin: 2px 4px 2px 0;
-  padding: 1px 8px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  line-height: 18px;
 }
 .dao-name {
   font-size: 13px;

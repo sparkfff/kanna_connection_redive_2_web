@@ -38,7 +38,7 @@ async def member_help(bot: HoshinoBot, ev: CQEvent):
 async def change_account_access(bot: HoshinoBot, ev: CQEvent):
     user_id = ev.user_id
     if not (account := await pcr_sqla.query_account(user_id)):
-        await bot.send(ev, "你没有绑定账号")
+        await bot.send(ev, "还没有绑定游戏账号，请发送【绑定账号+账号+密码】（+ 表示空格）")
         return
 
     num: str = ev.message.extract_plain_text().strip()

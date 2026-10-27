@@ -57,6 +57,10 @@ class WebSetting(Enum):
     web_host = "127.0.0.1"  # ← 改成你自己的内网 IP，例如 192.168.1.100
     web_port = "5173"
     web_base = "/kanna_connection"
+    # 机器人所在机器能访问的 WebUI 截图页面；生产部署时改成实际前端地址。
+    status_image_url = "http://127.0.0.1:5173/#/status-image"
+    # 留空使用 playwright install chromium 安装的浏览器；Windows 可设 msedge。
+    status_image_browser_channel = ""
 
 
 class BossData(Enum):
