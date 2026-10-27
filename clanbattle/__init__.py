@@ -52,7 +52,7 @@ help_text = """
 【启用肃正协议】数据出现异常使用即可清空所有数据（危险！！！）
 【状态】查看当前进度
 【预约表】栞栞谁预约了
-【预约 + 数字 + （周目）+ （留言） 】预约boss, 周目和留言可不写，默认当前周目
+【预约 + 数字 + （周目）+ （留言） 】预约boss；不填周目时，存活boss预约下一周目，未开放boss预约显示周目
 【取消预约 + （数字）】取消预约
 【清空预约 + （数字）】（仅）管理，清空预约
 【查树】栞栞树上有几个人
@@ -329,6 +329,18 @@ async def subscirbe(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "不约，滚")
         return
 
+    if match.group(2) is None:
+        clan_info = clanbattle_info.get(ev.group_id)
+        if (
+            clan_info is None
+            or not clan_info.loop_check
+            or clan_info.boss[boss - 1].lap_num <= 0
+        ):
+            await bot.send(ev, "未获取到当前Boss进度，请开启出刀监控，或指定周目，例如【预约 1 36】")
+            return
+        current_boss = clan_info.boss[boss - 1]
+        lap = current_boss.lap_num + (1 if current_boss.current_hp > 0 else 0)
+
     text = text[1:] if (text := match.group(3)) else ""
     await pcr_sqla.add_notice(
         NoticeCache(
@@ -341,7 +353,7 @@ async def subscirbe(bot: HoshinoBot, ev: CQEvent):
         )
     )
     notice_update_time[ev.group_id] = int(time.time())
-    await bot.send(ev, "预约成功", at_sender=True)
+    await bot.send(ev, f"预约成功：{lap}周目{boss}王" if lap else f"预约成功：当前周目{boss}王", at_sender=True)
 
 
 @sv.on_fullmatch("预约表", only_to_me=False)
