@@ -62,6 +62,7 @@ help_text = """
 【sl】记录sl
 【sl?】栞栞今天有没有用过sl
 【申请出刀 + 数字 + （留言） 】 申请打boss，boss死亡自动清空
+【进1～进5】快速申请对应boss，也可附加留言，例如【进3 合刀】
 【取消申请】 模拟10次挂10次，老子不打了
 【清空申请】（仅）管理，清空预约
 【修正出刀 + 出刀编号 + (完整刀|尾刀|补偿)"】修正错误刀（出刀编号可以通过查看个人战报获得）
@@ -471,7 +472,7 @@ async def checktree(bot: HoshinoBot, ev: CQEvent):
     await bot.send(ev, reply or "目前树上空空如也")
 
 
-@sv.on_rex(r"^申请出刀\s?(\d)\s?(\S+)?$")
+@sv.on_rex(r"^(?:申请出刀|进)\s?([1-5])(?!\d)\s?(\S+)?$")
 async def apply(bot: HoshinoBot, ev: CQEvent):
 
     match: re.Match = ev["match"]
