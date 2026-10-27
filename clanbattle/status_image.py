@@ -101,13 +101,15 @@ async def render_status_image(payload, view="status"):
             try:
                 page = await browser.new_page(
                     viewport={"width": 512 if view == "daily" else 960, "height": 960},
-                    device_scale_factor=1 if view == "daily" else 1.5,
-                    locale="zh-CN", color_scheme="light",
+                    device_scale_factor=2 if view == "daily" else 1.5,
+                    locale="zh-CN", color_scheme="dark" if view == "daily" else "light",
                 )
                 # No token, account credentials, or data-bearing public URL.
                 # Data enters only this browser context, never a server endpoint.
                 await page.add_init_script(
                     "window.__KANNA_STATUS__ = " + json.dumps(payload, ensure_ascii=True) + ";"
+                    + "localStorage.setItem('kanna.theme.v1', "
+                    + json.dumps("dark" if view == "daily" else "light") + ");"
                 )
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
                 board = page.locator("[data-status-board]")
@@ -122,7 +124,6 @@ async def render_status_image(payload, view="status"):
                             setTimeout(resolve, 4000);
                         });
                     }));
-                    document.documentElement.classList.remove('dark');
                 }""")
                 image = await board.screenshot(type="png", animations="disabled", timeout=15000)
                 return "[CQ:image,file=base64://" + base64.b64encode(image).decode("ascii") + "]"

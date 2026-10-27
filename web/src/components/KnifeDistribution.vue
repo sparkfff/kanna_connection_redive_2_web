@@ -22,10 +22,15 @@
 <script setup lang="ts">
 import type { ReportItem } from '@/types'
 import { daoNumColor } from '@/utils/dao'
+import { useTheme } from '@/composables/useTheme'
 defineProps<{ rows: ReportItem[] }>()
+const { isDark } = useTheme()
 function tagStyle(count: number) {
   const color = daoNumColor(count)
-  return { background: color + '1a', borderColor: color + '59', color }
+  return {
+    background: color + '1a', borderColor: color + '59',
+    color: isDark.value ? `color-mix(in srgb, ${color} 75%, white)` : color
+  }
 }
 </script>
 

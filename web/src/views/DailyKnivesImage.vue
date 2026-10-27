@@ -22,10 +22,14 @@ const rows = data?.groups.map(group => ({ dao_num: group.count, names: group.mem
 </script>
 
 <style scoped>
-.daily-board { width: 512px; box-sizing: border-box; padding: 8px; background: #fff0d6; font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
-.distribution-card { background: #fff; padding: 20px; border-radius: 12px; }
-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 14px; color: #a8184b; }
-header span { font-size: 11px; color: #a1a6b7; }
-.roster-note { color: #a17b3c; font-size: 11px; line-height: 1.6; margin: 10px 0 0; }
+.daily-board { width: 512px; box-sizing: border-box; padding: 8px; background: var(--kanna-page-bg); color: var(--kanna-text); font-family: 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', sans-serif; }
+.distribution-card { background: var(--kanna-card-bg); padding: 16px; border-radius: 12px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 18px; color: var(--kanna-heading); }
+header span { font-size: 13px; color: var(--kanna-text-secondary); }
+.daily-board :deep(.el-table) { font-size: 14px; }
+.daily-board :deep(.el-table th.el-table__cell) { color: var(--kanna-text-secondary); }
+.daily-board :deep(.dao-num-badge) { font-size: 15px; line-height: 22px; padding: 3px 6px; }
+.daily-board :deep(.dist-player-tag) { font-size: 15px; line-height: 22px; padding: 2px 6px; font-weight: 500; }
+.roster-note { color: var(--kanna-text-secondary); font-size: 13px; line-height: 1.6; margin: 10px 0 0; }
 .no-payload { padding: 32px; }
 </style>

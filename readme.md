@@ -25,6 +25,8 @@ Windows 已安装 Edge 时也可将 `status_image_browser_channel` 设为 `"msed
 显示刀数、玩家标签和人数。仍按每日 05:00（UTC+8）换日，
 完整刀计 1，尾刀 / 补偿计 0.5，每人最多计 3 刀。没有完整公会名单时明确标注统计范围，
 截图失败时回退为原来的统计图片。两种截图只需配置同一项 `status_image_url`。
+出刀统计截图采用 WebUI 夜间主题、较大字号和 2 倍像素密度，逻辑宽度仍为 512px；
+仅在隔离截图浏览器中指定主题，不会改变成员正常浏览网页时的主题偏好。
 
 > **本项目基于 [SonderXiaoming/kanna_connection_redive_2](https://github.com/SonderXiaoming/kanna_connection_redive_2)（你只需要出刀2）修改而来**，
 > 在原项目的基础上进行了功能扩展与重构。能站在这个基础上继续做下去，全靠原作者
