@@ -254,35 +254,7 @@
         <el-col :lg="9" :md="12" :xs="24">
           <div class="kanna-card h-full">
             <div class="card-title">今日出刀分布</div>
-            <el-table :data="data.report" size="small" stripe style="width: 100%">
-              <el-table-column label="刀数" width="100">
-                <template #default="{ row }">
-                  <div class="dao-num-badge" :style="{ background: daoNumColor(row.dao_num) }">
-                    {{ row.dao_num === 0 ? '未出刀' : row.dao_num + ' 刀' }}
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="玩家">
-                <template #default="{ row }">
-                  <span
-                    v-for="(name, i) in row.names"
-                    :key="i"
-                    class="dist-player-tag"
-                    :style="distTagStyle(row.dao_num)"
-                  >
-                    {{ name }}
-                  </span>
-                  <span v-if="!row.names || row.names.length === 0" class="text-muted text-sm">
-                    暂无
-                  </span>
-                </template>
-              </el-table-column>
-              <el-table-column label="人数" width="80" align="center">
-                <template #default="{ row }">
-                  <b>{{ row.names?.length || 0 }}</b>
-                </template>
-              </el-table-column>
-            </el-table>
+            <KnifeDistribution :rows="data.report" />
           </div>
         </el-col>
         <!-- 中：最近出刀 Top 20（截图红框中间位置） -->
@@ -707,7 +679,7 @@
 
 <script setup lang="ts">
 import { bossAvatarUrl } from '@/utils/boss'
-import { daoNumColor } from '@/utils/dao'
+import KnifeDistribution from '@/components/KnifeDistribution.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { use } from 'echarts/core'
@@ -1196,14 +1168,7 @@ function avatarBgColor(name: string | undefined | null): string {
 // 今日出刀分布：按刀数给徽标配色（刀数越多越绿，越少越红，未出刀为灰）
 
 // 今日出刀分布：玩家名标签跟随该行刀数配色（同色浅底 + 同色文字/边框）
-function distTagStyle(dao: number): Record<string, string> {
-  const color = daoNumColor(dao)
-  return {
-    background: color + '1a',
-    borderColor: color + '59',
-    color: color,
-  }
-}
+
 
 // 横向条形：这一栏只有 6/24 宽，饼图在这个宽度下 30 个分片根本看不出谁高谁低；
 // 横向条形能同时给出绝对值（条长 + 末端标签）和相对占比（tooltip）。
@@ -2015,29 +1980,6 @@ onBeforeUnmount(() => {
   font-size: 13px;
   flex-shrink: 0;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
-}
-/* 今日出刀分布 - 刀数徽标（颜色由 daoNumColor 按刀数动态绑定） */
-.dao-num-badge {
-  display: inline-block;
-  min-width: 52px;
-  text-align: center;
-  padding: 3px 10px;
-  border-radius: 6px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-}
-/* 今日出刀分布 - 玩家名标签（底色/文字色随刀数配色动态绑定） */
-.dist-player-tag {
-  display: inline-block;
-  margin: 2px 4px 2px 0;
-  padding: 1px 8px;
-  border-radius: 4px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  line-height: 18px;
 }
 .dao-name {
   font-size: 13px;

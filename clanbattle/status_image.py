@@ -100,7 +100,7 @@ async def render_status_image(payload, view="status"):
             browser = await playwright.chromium.launch(**options)
             try:
                 page = await browser.new_page(
-                    viewport={"width": 800 if view == "daily" else 960, "height": 960},
+                    viewport={"width": 512 if view == "daily" else 960, "height": 960},
                     device_scale_factor=1 if view == "daily" else 1.5,
                     locale="zh-CN", color_scheme="light",
                 )
