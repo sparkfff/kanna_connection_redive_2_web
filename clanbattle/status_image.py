@@ -38,6 +38,7 @@ async def build_status_payload(bot, group_id, clan_info):
                 continue
             bosses[notice.boss - 1][label].append({
                 "name": names.get(int(notice.user_id), str(notice.user_id)),
+                "qq_id": str(notice.user_id),
                 "text": notice.text or "",
                 "lap": notice.lap or 0,
             })

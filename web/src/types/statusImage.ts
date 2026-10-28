@@ -1,6 +1,7 @@
 import type { BossInfoCounter } from './index'
 
 export interface StatusMember {
+  qq_id?: string
   name: string
   text: string
   lap: number
