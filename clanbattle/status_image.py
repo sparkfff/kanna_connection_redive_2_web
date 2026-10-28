@@ -10,6 +10,7 @@ from ..basedata import NoticeType
 from ..database.dal import pcr_sqla, pcr_date
 from ..setting import WebSetting
 from ..webui.status_data import build_boss_status
+from .carry_query import remaining_carry_members
 
 # Bound simultaneous browser instances; every request gets an isolated context.
 _render_lock = asyncio.Lock()
@@ -53,6 +54,7 @@ async def build_status_payload(bot, group_id, clan_info):
         "full_count": sum(record.flag == 0 for record in records),
         "tail_count": sum(record.flag == 1 for record in records),
         "carry_count": sum(record.flag == 0.5 for record in records),
+        "remaining_carries": [member for member in remaining_carry_members(records, now) if member['has_remaining']],
         "boss": bosses,
     }
 
