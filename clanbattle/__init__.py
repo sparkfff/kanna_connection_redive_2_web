@@ -50,6 +50,8 @@ help_text = """
 【昨日战报 + 游戏名称】 栞栞昨日个人出刀情况
 【出刀详情 + 出刀编号】 栞栞你这刀怎么出的（出刀编号可以通过查看个人战报获得）
 【今日出刀】今日出刀情况
+【剩余补偿】/【查补偿】查看本群今日尚未使用的补偿及秒数
+【我的补偿】查看本人今日剩余补偿，可 @ 成员查询（沿用账号查询权限）
 【昨日出刀】昨日出刀情况
 【启用肃正协议】数据出现异常使用即可清空所有数据（危险！！！）
 【状态】查看当前进度
@@ -301,6 +303,37 @@ async def daostate(bot: HoshinoBot, ev: CQEvent):
                 msg += f"->{i+1}：{name} {info.text} 已过去{format_time(now - info.time)}\n"
     if msg:
         await bot.send(ev, msg.strip())
+
+
+@sv.on_fullmatch(("剩余补偿", "查补偿"))
+async def query_remaining_carries(bot: HoshinoBot, ev: CQEvent):
+    if not ev.group_id:
+        await bot.send(ev, "请在群内查询剩余补偿")
+        return
+    from .carry_query import format_remaining_carries
+
+    now = int(time.time())
+    records = await pcr_sqla.get_day_rcords(now, ev.group_id)
+    await bot.send(ev, format_remaining_carries(records, now))
+
+
+@sv.on_prefix("我的补偿")
+@check_account_qqid
+async def query_my_carries(bot: HoshinoBot, ev: CQEvent, account: Account, qq_id: int):
+    if not ev.group_id:
+        await bot.send(ev, "请在群内查询剩余补偿")
+        return
+    if ev.message.extract_plain_text().strip():
+        await bot.send(ev, "发送【我的补偿】查询本人，或附加 @成员 查询对方")
+        return
+    if not account.viewer_id:
+        await bot.send(ev, "尚未取得游戏ID，请重新绑定账号更新信息：【绑定账号+账号+密码】（+ 表示空格）")
+        return
+    from .carry_query import format_remaining_carries
+
+    now = int(time.time())
+    records = await pcr_sqla.get_day_rcords(now, ev.group_id)
+    await bot.send(ev, format_remaining_carries(records, now, account.viewer_id, account.name))
 
 
 @sv.on_fullmatch("分数线")
