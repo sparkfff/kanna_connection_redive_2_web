@@ -18,6 +18,7 @@
             <span class="carry-label">剩余<br />补偿</span>
             <div v-if="data.remaining_carries?.length" class="carry-members">
               <span v-for="member in data.remaining_carries" :key="member.pcrid" class="carry-member" :class="{ uncertain: member.uncertain }">
+                <el-avatar :size="22" :src="member.qq_id ? `https://q1.qlogo.cn/g?b=qq&amp;nk=${member.qq_id}&amp;s=100` : undefined">{{ member.name.slice(0, 1) }}</el-avatar>
                 <b>{{ member.name }}</b><span>{{ member.detail }}</span>
               </span>
             </div>
@@ -66,7 +67,8 @@ h1 { font-size: 26px; line-height: 1.3; margin: 0; overflow-wrap: anywhere; }
 .carry-roster { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px; background: #efefec; border-radius: 7px; font-size: 14px; }
 .carry-label { flex: none; line-height: 1.5; font-weight: bold; color: #655c50; }
 .carry-members { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.carry-member { display: inline-flex; flex-wrap: wrap; gap: 3px 7px; max-width: 100%; padding: 3px 8px; border-radius: 9px; background: #dedfd9; line-height: 1.5; overflow-wrap: anywhere; }
+.carry-member { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; max-width: 100%; padding: 3px 8px; border-radius: 9px; background: #dedfd9; line-height: 1.5; overflow-wrap: anywhere; }
+.carry-member .el-avatar { flex-shrink: 0; background: #c9c6b9; color: #655c50; font-size: 12px; }
 .carry-member.uncertain { background: #fff0cc; color: #8a601c; }
 .carry-empty { flex: 1; text-align: center; color: #8b8173; }
 .board-footer { font-size: 12px; line-height: 1.8; color: #978456; margin-top: 20px; text-align: center; }

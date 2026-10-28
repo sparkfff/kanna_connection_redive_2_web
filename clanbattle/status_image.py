@@ -43,6 +43,10 @@ async def build_status_payload(bot, group_id, clan_info):
             })
     records = await pcr_sqla.get_day_rcords(now, group_id)
     records = records or []
+    remaining = [member for member in remaining_carry_members(records, now) if member['has_remaining']]
+    player_qqs = await pcr_sqla.get_group_player_qqs(group_id, names.keys()) if remaining else {}
+    for member in remaining:
+        member['qq_id'] = player_qqs.get(member['pcrid'])
     running = bool(clan_info.loop_check)
     return {
         "clan_name": clan_info.clan_name or f"群 {group_id}",
@@ -54,7 +58,7 @@ async def build_status_payload(bot, group_id, clan_info):
         "full_count": sum(record.flag == 0 for record in records),
         "tail_count": sum(record.flag == 1 for record in records),
         "carry_count": sum(record.flag == 0.5 for record in records),
-        "remaining_carries": [member for member in remaining_carry_members(records, now) if member['has_remaining']],
+        "remaining_carries": remaining,
         "boss": bosses,
     }
 

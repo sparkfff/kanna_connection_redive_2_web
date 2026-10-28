@@ -144,6 +144,24 @@ class SQALA:
                 return account
         return None
 
+    async def get_group_player_qqs(self, group_id: int, user_ids) -> dict:
+        """Map game IDs to current group members, respecting group overrides."""
+        if not user_ids:
+            return {}
+        async with self.async_session() as session:
+            result = await session.execute(select(Account.user_id, Account.viewer_id, Account.group_id).where(
+                Account.user_id.in_(list(user_ids)), Account.group_id.in_([0, int(group_id)]),
+            ))
+            selected = {}
+            for qq, viewer, scope in result.all():
+                if qq not in selected or scope == int(group_id):
+                    selected[qq] = (viewer, scope)
+        owners = {}
+        for qq, (viewer, _) in selected.items():
+            if viewer:
+                owners.setdefault(int(viewer), []).append(str(qq))
+        return {viewer: qqs[0] for viewer, qqs in owners.items() if len(qqs) == 1}
+
     async def query_accounts_for_group(
         self, user_id: int, group_id: int
     ) -> List[Account]:

@@ -22,6 +22,6 @@ export interface StatusImageData {
   full_count: number
   tail_count: number
   carry_count: number
-  remaining_carries?: { pcrid: number; name: string; detail: string; uncertain: boolean }[]
+  remaining_carries?: { pcrid: number; name: string; detail: string; uncertain: boolean; qq_id?: string | null }[]
   boss: StatusBoss[]
 }
