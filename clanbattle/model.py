@@ -25,7 +25,7 @@ from ..login import run_group
 from ..util.task_pool import PoolBase, PrioritizedQueryItemBase
 from ..util.tools import anywhere_send
 from ..util.auto_boss import clan_boss_info
-from ..util.knife_policy import classify_knife
+from ..util.knife_policy import classify_knife, first_day_carry_active
 from .base import find_item, format_bignum, format_precent
 from .damage_correction import DamageCorrectionTracker
 from .carry_schedule import sync_first_day_carry
@@ -43,6 +43,7 @@ class ClanBattle:
         self.group_id = group_id
         self.client = None  # 登录后由 init() 赋值；先占位，避免未初始化时属性不存在
         self.notice_dao = []
+        self.notice_attacks = []
         self.notice_tree = []
         self.notice_fighter = []
         self.notice_subscribe = []
@@ -211,6 +212,9 @@ class ClanBattle:
             pcrid, self.clan_battle_id, record.battle_log_id
         )
         policy = await sync_first_day_carry(self.group_id, self)
+        key = (pcrid, record.lap_num, record.order_num, time)
+        killed = allow_damage_correction and self.damage_correction.is_kill(record)
+        flag = classify_knife(time_line.start_remain_time, time_line.battle_time, killed, time, policy)
         temp_dict = {
             "group_id": self.group_id,
             "battle_log_id": time % 10000000,  # 这玩意居然会重复，受不了，直接取时间
@@ -225,11 +229,12 @@ class ClanBattle:
             "pcrid": pcrid,
             "remain_time": time_line.start_remain_time,
             "battle_time": time_line.battle_time,
-            "flag": classify_knife(
-                time_line.start_remain_time, time_line.battle_time,
-                allow_damage_correction and self.damage_correction.is_kill(record),
-                time, policy,
-            ),
+            "raw_damage": self.damage_correction.raw_damage(record) if allow_damage_correction else record.total_damage,
+            "boss_hp": (self.damage_correction.cap_for(key) or 0) if allow_damage_correction else 0,
+            "kill_confirmed": killed,
+            "knife_source": "policy" if flag == .5 and time_line.start_remain_time == 90 and first_day_carry_active(policy, time) else "timing",
+            "own_units": ','.join(str(unit.unit_id) for unit in record.units if getattr(unit, 'viewer_id', None) == pcrid),
+            "flag": flag,
         }
         for i, unit in enumerate(record.units):
             temp_dict[f"unit{i+1}"] = unit.unit_id
@@ -358,10 +363,7 @@ class ClanBattle:
                 f"（原始伤害{history.damage}）"
                 if damage < history.damage else ""
             )
-            self.notice_dao.append(
-                f"{history.name}对{history.lap_num}周目{history.order_num}王造成{damage}点伤害"
-                f"{'并击破' if history.kill else ''}{correction}。"
-            )
+            self.notice_attacks.append((history, damage, correction, 0))
             # 通知挂树，清空申请出刀
             if history.kill:
                 if offtree_text := await self.notice_text(
@@ -373,13 +375,33 @@ class ClanBattle:
         self.dao_update_time = int(time.time())
         self.refresh_latest_time(clan_battle_top)
 
+    async def build_attack_notices(self):
+        pending = []
+        for history, damage, correction, attempts in self.notice_attacks:
+            suffix = ''
+            if history.kill:
+                record = await pcr_sqla.get_attack_record(self.group_id, (
+                    history.viewer_id, history.lap_num, history.order_num, history.create_time,
+                ))
+                if record is None and attempts < 2:
+                    pending.append((history, damage, correction, attempts + 1))
+                    continue
+                if record is not None and record.carry_seconds > 0:
+                    suffix = f"获得延长战斗时间{record.carry_seconds}s。"
+            self.notice_dao.append(
+                f"{history.name}对{history.lap_num}周目{history.order_num}王造成{damage}点伤害"
+                f"{'并击破' if history.kill else ''}{correction}。{suffix}"
+            )
+        self.notice_attacks = pending
+
     async def reconcile_damage(self):
         # A detailed report can become visible after top was fetched in the
         # previous iteration. Fix that already-saved row as well as new inserts.
         pending = dict(self.damage_correction.pending_caps)
         kills = set(self.damage_correction.pending_kills)
         if pending or kills:
-            await pcr_sqla.correct_kill_damage(self.group_id, pending, kills)
+            raw = {key: self.damage_correction.raw_for_key(key) for key in (*pending, *kills)}
+            await pcr_sqla.correct_kill_damage(self.group_id, pending, kills, raw)
             for key, cap in pending.items():
                 if self.damage_correction.pending_caps.get(key) == cap:
                     del self.damage_correction.pending_caps[key]
@@ -484,11 +506,12 @@ class ClanBattlePool(PoolBase):
 
             # Damage histories can change even when a snapshot's HP does not.
             await clan_info.record_change(clan_battle_top)
+            await clan_info.add_record(loop_num)
+            await clan_info.reconcile_damage()
+            await clan_info.build_attack_notices()
             await clan_info.send_notice(
                 [NoticeType.dao.value, NoticeType.tree.value]
             )
-            await clan_info.add_record(loop_num)
-            await clan_info.reconcile_damage()
             clan_info.error_count = 0
         asyncio.create_task(
             self.add_task(

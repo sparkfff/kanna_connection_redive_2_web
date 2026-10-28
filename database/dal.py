@@ -10,6 +10,7 @@ from sqlmodel import SQLModel, func
 
 from ..basedata import FilePath, NoticeType
 from ..util.knife_policy import first_day_carry_active, first_day_window
+from ..util.carryover import classify_day, carry_seconds
 from .models import (
     Account,
     ArenaSetting,
@@ -36,6 +37,12 @@ from .models import (
 # 老库补列清单：(表名, 列名, 列定义)
 # 加字段时在这里补一条，剩下的交给 SQALA._run_migrations 幂等执行。
 _COLUMN_MIGRATIONS = [
+    ("recorddao", "raw_damage", "INTEGER NOT NULL DEFAULT 0"),
+    ("recorddao", "boss_hp", "INTEGER NOT NULL DEFAULT 0"),
+    ("recorddao", "kill_confirmed", "BOOLEAN NOT NULL DEFAULT 0"),
+    ("recorddao", "carry_seconds", "INTEGER NOT NULL DEFAULT 0"),
+    ("recorddao", "own_units", "VARCHAR NOT NULL DEFAULT ''"),
+    ("recorddao", "knife_source", "VARCHAR NOT NULL DEFAULT ''"),
     ("groupsetting", "first_day_carry_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
     ("groupsetting", "first_day_carry_date", "VARCHAR NOT NULL DEFAULT ''"),
     ("groupsetting", "first_day_carry_automatic", "BOOLEAN NOT NULL DEFAULT 0"),
@@ -219,8 +226,48 @@ class SQALA:
         async with self.async_session() as session:
             async with session.begin():
                 session.add_all(dao_list)
+        for group_id, day in {(r.group_id, pcr_date(r.time).strftime('%Y-%m-%d')) for r in dao_list}:
+            await self.reclassify_carry_day(group_id, day)
 
-    async def correct_kill_damage(self, group_id: int, caps: dict, kills=()):
+    async def reclassify_carry_day(self, group_id: int, day: str):
+        start, end = first_day_window(day)
+        async with self.async_session() as session:
+            async with session.begin():
+                result = await session.execute(select(RecordDao).where(
+                    RecordDao.group_id == group_id, RecordDao.time >= start, RecordDao.time < end,
+                ).order_by(RecordDao.time, RecordDao.id))
+                players = {}
+                for record in result.scalars().all():
+                    players.setdefault(record.pcrid, []).append(record)
+                for records in players.values():
+                    for record in records:
+                        # A previously inferred tail may become ambiguous when
+                        # late reports arrive. Never announce a new carry from
+                        # a possible compensation kill.
+                        record.carry_seconds = carry_seconds(
+                            record.boss_hp, record.raw_damage, record.remain_time, record.battle_time,
+                        ) if record.knife_source == 'manual' and record.flag == 1 else 0
+                    # Same-second reports have no reliable ordering across APIs.
+                    if len({r.time for r in records}) != len(records):
+                        continue
+                    for index, (flag, seconds) in classify_day(records).items():
+                        record = records[index]
+                        if record.knife_source != 'manual':
+                            record.flag = flag
+                        record.carry_seconds = seconds
+
+    async def get_attack_record(self, group_id: int, key):
+        pcrid, lap, boss, timestamp = key
+        async with self.async_session() as session:
+            result = await session.execute(select(RecordDao).where(
+                RecordDao.group_id == group_id, RecordDao.pcrid == pcrid,
+                RecordDao.lap == lap, RecordDao.boss == boss, RecordDao.time == timestamp,
+            ))
+            rows = result.scalars().all()
+            return rows[0] if len(rows) == 1 else None
+
+    async def correct_kill_damage(self, group_id: int, caps: dict, kills=(), raw_damages=None):
+        raw_damages = raw_damages or {}
         policy = await self.get_first_day_carry_policy(group_id)
         async with self.async_session() as session:
             async with session.begin():
@@ -239,12 +286,19 @@ class SQALA:
                     records = result.scalars().all()
                     if len(records) == 1:
                         record = records[0]
+                        record.raw_damage = max(record.raw_damage, record.damage, raw_damages.get(key) or 0)
                         if cap is not None and record.damage > cap:
                             record.damage = cap
-                        if record.flag != 0.5 or (
+                        record.kill_confirmed = True
+                        if cap is not None:
+                            record.boss_hp = cap
+                        if record.knife_source != 'manual' and (record.flag != 0.5 or (
                             record.remain_time >= 90 and first_day_carry_active(policy, record.time)
-                        ):
+                        )):
                             record.flag = 1
+                        record.carry_seconds = 0
+        for day in {pcr_date(key[3]).strftime('%Y-%m-%d') for key in (*caps, *kills)}:
+            await self.reclassify_carry_day(group_id, day)
 
     async def get_record_keys_at(self, group_id: int, timestamp: int) -> set:
         async with self.async_session() as session:
@@ -366,6 +420,7 @@ class SQALA:
                 return result.scalars().all()
 
     async def correct_dao(self, dao_id: int, flag: int, group_id: int):
+        day = None
         async with self.async_session() as session:
             async with session.begin():
                 result = await session.execute(
@@ -374,17 +429,22 @@ class SQALA:
                         RecordDao.group_id == group_id,
                     )
                 )
-                if result.scalar_one_or_none():
+                if record := result.scalar_one_or_none():
                     await session.execute(
                         update(RecordDao)
                         .where(
                             RecordDao.battle_log_id == dao_id,
                             RecordDao.group_id == group_id,
                         )
-                        .values(flag=flag)
+                        .values(flag=flag, knife_source='manual', carry_seconds=(
+                            carry_seconds(record.boss_hp, record.raw_damage, record.remain_time, record.battle_time)
+                            if flag == 1 else 0
+                        ))
                     )
-                    return True
-        return False
+                    day = pcr_date(record.time).strftime('%Y-%m-%d')
+        if day:
+            await self.reclassify_carry_day(group_id, day)
+        return day is not None
 
     # 通知部分
     async def get_notice(
@@ -928,7 +988,8 @@ class SQALA:
                             RecordDao.time >= window[0],
                             RecordDao.time < window[1],
                             RecordDao.flag == 0,
-                        ).values(flag=0.5)
+                            RecordDao.knife_source != 'manual',
+                        ).values(flag=0.5, knife_source='policy')
                     )
                     return result.rowcount
                 return 0

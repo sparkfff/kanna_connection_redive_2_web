@@ -166,3 +166,14 @@ class DamageCorrectionTracker:
                record.order_num, record.battle_end_time)
         cap = self.cap_for(key)
         return min(record.total_damage, cap) if cap is not None else record.total_damage
+
+    def raw_damage(self, record):
+        key = (record.target_viewer_id, record.lap_num,
+               record.order_num, record.battle_end_time)
+        return max(record.total_damage, self.raw_for_key(key) or 0)
+
+    def raw_for_key(self, key):
+        if key in self.ambiguous_keys:
+            return None
+        matches = [identity[2] for identity, (event_key, _) in self.events.items() if event_key == key]
+        return matches[0] if len(matches) == 1 else None

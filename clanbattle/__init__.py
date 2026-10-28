@@ -59,6 +59,7 @@ help_text = """
 【清空预约 + （数字）】（仅）管理，清空预约
 【查树】栞栞树上有几个人
 【查档线 + 排名】查本届会战档线，可查任意排名如【查档线 500 2000】，不带参数显示常用档位（含 1、2 名榜首档，奖励与第 3 名同档）
+【分数线】返回 WebUI 档线图片，仅显示有公会的档位，不含奖励与差距
 【下树】寄，掉刀了
 【挂树 + 数字】失误了, 寄
 【sl】记录sl
@@ -300,6 +301,25 @@ async def daostate(bot: HoshinoBot, ev: CQEvent):
                 msg += f"->{i+1}：{name} {info.text} 已过去{format_time(now - info.time)}\n"
     if msg:
         await bot.send(ev, msg.strip())
+
+
+@sv.on_fullmatch("分数线")
+async def rank_lines_image(bot: HoshinoBot, ev: CQEvent):
+    clan_info = clanbattle_info.get(ev.group_id)
+    if not ev.group_id or not is_monitor_running(clan_info):
+        await bot.send(ev, "请在群内开启出刀监控后查询分数线")
+        return
+    try:
+        from .status_image import build_rank_lines_payload, render_status_image
+
+        result = await get_rank_lines_cached(clan_info, list(DEFAULT_RANK_LINES))
+        picture = await asyncio.wait_for(
+            render_status_image(build_rank_lines_payload(result), view="rank"), timeout=70,
+        )
+        await bot.send(ev, picture)
+    except Exception as e:
+        logger.warning(f"分数线图片生成失败 group={ev.group_id}: {e}")
+        await bot.send(ev, "分数线图片生成失败，请稍后重试；也可使用【查档线】查询。")
 
 
 @sv.on_prefix("查档线", "档线")
