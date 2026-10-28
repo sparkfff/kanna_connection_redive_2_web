@@ -70,6 +70,12 @@ class RecordDao(DataBase, table=True):
     remain_time: int = Field(title="战斗剩余时间")
     battle_time: int = Field(title="战斗时间")
     flag: float = Field(title="出刀类型")
+    raw_damage: int = Field(default=0, title="修正前伤害")
+    boss_hp: int = Field(default=0, title="击杀前剩余血量")
+    kill_confirmed: bool = Field(default=False, title="已确认击杀")
+    carry_seconds: int = Field(default=0, title="获得补偿秒数")
+    own_units: str = Field(default="", title="本人的出战角色（排除支援）")
+    knife_source: str = Field(default="", title="出刀类型判定来源")
     unit1: int = Field(title="出战角色1-ID")
     unit2: Optional[int] = Field(default=0, title="出战角色2-ID")
     unit3: Optional[int] = Field(default=0, title="出战角色3-ID")
@@ -279,7 +285,7 @@ class ClanBattleMember(DataBase, table=True):
 class GroupSetting(DataBase, table=True):
     """群级设置（**按群独立**，一个群一行）
 
-    目前只有「主动推送」一个开关：出刀监控跑起来之后，bot 会主动往群里播报
+    「主动推送」开关：出刀监控跑起来之后，bot 会主动往群里播报
     出刀人数 / 出刀伤害 / 预约 / 挂树这些消息，群里嫌吵可以用【关闭推送】关掉。
     开关只影响本群，别的群不受影响。
 
@@ -289,6 +295,10 @@ class GroupSetting(DataBase, table=True):
     __table_args__ = {"keep_existing": True}
     group_id: int = Field(primary_key=True, title="所属群")
     push_enabled: bool = Field(default=True, title="主动推送")
+    first_day_carry_enabled: bool = Field(default=False, title="首日满补模式")
+    first_day_carry_date: str = Field(default="", title="本期首日游戏日期")
+    first_day_carry_automatic: bool = Field(default=False, title="每期自动识别首日")
+    first_day_carry_battle_id: int = Field(default=0, title="首日对应的会战编号")
 
 
 class BlackUnit(DataBase, table=True):

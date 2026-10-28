@@ -110,6 +110,15 @@ export interface DayDamageRank {
   score_rate: number
 }
 
+export interface FirstDayCarryState {
+  automatic: boolean
+  enabled: boolean
+  date: string
+  game_day: string
+  effective: boolean
+  corrected_count: number
+}
+
 export interface DashboardResponse {
   priority: number
   clan_priority: number
@@ -124,6 +133,7 @@ export interface DashboardResponse {
   boss: BossInfoCounter[]
   report: ReportItem[]
   day_num: number
+  first_day_carry: FirstDayCarryState
   // 最近 20 条出刀记录（按时间倒序，来自今日出刀）
   last_dao: DaoInfo[]
   // 今日伤害排行 Top 10（后端按玩家聚合今日出刀，已按伤害倒序）

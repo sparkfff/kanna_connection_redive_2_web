@@ -78,6 +78,19 @@ def build_daily_payload(stats, clan_name, target_time, label, roster_known):
     }
 
 
+def build_rank_lines_payload(result):
+    """Use the same cached ranking response as the dashboard and QQ query."""
+    data = result["data"]
+    return {
+        "clan_battle_id": data["clan_battle_id"],
+        "lines": data.get("lines") or [],
+        "my": data.get("my"),
+        "updated_at": int(result.get("updated_at") or 0),
+        "cached": bool(result.get("cached")),
+        "stale": bool(result.get("stale")),
+    }
+
+
 async def render_status_image(payload, view="status"):
     # Lazy import: deployments without Playwright still retain text status.
     from playwright.async_api import async_playwright
@@ -89,6 +102,8 @@ async def render_status_image(payload, view="status"):
     if view == "daily":
         # Reuse the configured frontend origin and deployment subpath.
         url = parts._replace(fragment="/daily-knives-image").geturl()
+    elif view == "rank":
+        url = parts._replace(fragment="/rank-lines-image").geturl()
     elif view != "status":
         raise ValueError("未知的截图页面")
     async with _render_lock:
@@ -100,8 +115,8 @@ async def render_status_image(payload, view="status"):
             browser = await playwright.chromium.launch(**options)
             try:
                 page = await browser.new_page(
-                    viewport={"width": 512 if view == "daily" else 960, "height": 960},
-                    device_scale_factor=2 if view == "daily" else 1.5,
+                    viewport={"width": {"daily": 512, "rank": 700}.get(view, 960), "height": 960},
+                    device_scale_factor=2 if view in ("daily", "rank") else 1.5,
                     locale="zh-CN", color_scheme="dark" if view == "daily" else "light",
                 )
                 # No token, account credentials, or data-bearing public URL.

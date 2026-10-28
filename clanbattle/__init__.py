@@ -14,6 +14,8 @@ from ..database.models import ClanBattleKPI, NoticeCache, SLDao
 from ..login import query
 from ..setting import ClientSetting
 from ..util.auto_boss import clan_boss_info
+from ..util.knife_policy import first_day_carry_active, first_day_window, game_day
+from .carry_schedule import sync_first_day_carry
 from ..util.decorator import (
     check_account_qqid,
     check_priv_adimin,
@@ -48,6 +50,8 @@ help_text = """
 【昨日战报 + 游戏名称】 栞栞昨日个人出刀情况
 【出刀详情 + 出刀编号】 栞栞你这刀怎么出的（出刀编号可以通过查看个人战报获得）
 【今日出刀】今日出刀情况
+【剩余补偿】/【查补偿】查看本群今日尚未使用的补偿及秒数
+【我的补偿】查看本人今日剩余补偿，可 @ 成员查询（沿用账号查询权限）
 【昨日出刀】昨日出刀情况
 【启用肃正协议】数据出现异常使用即可清空所有数据（危险！！！）
 【状态】查看当前进度
@@ -57,6 +61,7 @@ help_text = """
 【清空预约 + （数字）】（仅）管理，清空预约
 【查树】栞栞树上有几个人
 【查档线 + 排名】查本届会战档线，可查任意排名如【查档线 500 2000】，不带参数显示常用档位（含 1、2 名榜首档，奖励与第 3 名同档）
+【分数线】返回 WebUI 档线图片，仅显示有公会的档位，不含奖励与差距
 【下树】寄，掉刀了
 【挂树 + 数字】失误了, 寄
 【sl】记录sl
@@ -64,6 +69,9 @@ help_text = """
 【申请出刀 + 数字 + （留言） 】 申请打boss，boss死亡自动清空
 【进1～进5】快速申请对应boss，也可附加留言，例如【进3 合刀】
 【取消申请】/【不打了】取消本人的出刀申请
+【开启首日满补 + （YYYY-MM-DD）】管理：不填日期每期自动识别首日，也可手动指定日期
+【关闭首日满补】管理：后续记录恢复正常判定
+【首日满补状态】查看首日满补设置
 【清空申请】（仅）管理，清空预约
 【修正出刀 + 出刀编号 + (完整刀|尾刀|补偿)"】修正错误刀（出刀编号可以通过查看个人战报获得）
 【会战KPI】查看等效出刀数
@@ -193,6 +201,60 @@ async def close_push(bot: HoshinoBot, ev: CQEvent):
     await _switch_push(bot, ev, False)
 
 
+@sv.on_rex(r"^开启首日满补(?:模式)?(?:\s+(\d{4}-\d{2}-\d{2}|自动))?$")
+async def enable_first_day_carry(bot: HoshinoBot, ev: CQEvent):
+    if not ev.group_id or not is_group_manager(ev):
+        await bot.send(ev, "请由本群群主、管理员或bot主人在群内设置")
+        return
+    day = ev["match"].group(1)
+    automatic = not day or day == "自动"
+    day = None if automatic else day
+    try:
+        if day:
+            first_day_window(day)
+    except ValueError:
+        await bot.send(ev, "日期无效，请使用 YYYY-MM-DD，例如【开启首日满补 2026-10-26】")
+        return
+    count = await pcr_sqla.set_first_day_carry_policy(ev.group_id, True, day, automatic=automatic, battle_id=0)
+    policy = await sync_first_day_carry(ev.group_id, clanbattle_info.get(ev.group_id))
+    count += policy.get("corrected_count", 0)
+    description = "每期自动识别首日，设置持续保留" if automatic else "手动指定首日"
+    day = policy["date"] or "待识别（需开启国服会战监控；台服请手动指定日期）"
+    notice_update_time[ev.group_id] = int(time.time())
+    if clan_info := clanbattle_info.get(ev.group_id):
+        clan_info.dao_update_time = int(time.time())
+    await bot.send(
+        ev, f"已开启首日满补模式，{description}。本期首日：{day}（05:00 至次日05:00，UTC+8）。\n"
+        f"该日完整刀按补偿计，确认击杀记尾刀，短时补偿仍记补偿；已修正 {count} 条完整刀记录。\n"
+        "其他游戏日正常判定。可发送【开启首日满补 YYYY-MM-DD】改为手动日期。",
+    )
+
+
+@sv.on_fullmatch(("关闭首日满补", "关闭首日满补模式"))
+async def disable_first_day_carry(bot: HoshinoBot, ev: CQEvent):
+    if not ev.group_id or not is_group_manager(ev):
+        await bot.send(ev, "请由本群群主、管理员或bot主人在群内设置")
+        return
+    await pcr_sqla.set_first_day_carry_policy(ev.group_id, False)
+    notice_update_time[ev.group_id] = int(time.time())
+    await bot.send(ev, "已关闭首日满补模式，后续记录恢复正常判定；已修正记录保留，可用【修正出刀】调整。")
+
+
+@sv.on_fullmatch("首日满补状态")
+async def first_day_carry_status(bot: HoshinoBot, ev: CQEvent):
+    if not ev.group_id:
+        await bot.send(ev, "请在群内查询")
+        return
+    policy = await sync_first_day_carry(ev.group_id, clanbattle_info.get(ev.group_id))
+    effective = first_day_carry_active(policy, time.time())
+    await bot.send(
+        ev, f"首日满补：{'开启' if policy['enabled'] else '关闭'}\n"
+        f"识别方式：{'每期自动' if policy.get('automatic') else '手动日期'}\n"
+        f"本期首日：{policy['date'] or '待识别'}（UTC+8，05:00换日）\n"
+        f"当前游戏日：{game_day(time.time())}，{'按首日满补判定' if effective else '正常判定'}",
+    )
+
+
 @sv.on_fullmatch("状态")
 async def daostate(bot: HoshinoBot, ev: CQEvent):
     group_id = ev.group_id
@@ -241,6 +303,56 @@ async def daostate(bot: HoshinoBot, ev: CQEvent):
                 msg += f"->{i+1}：{name} {info.text} 已过去{format_time(now - info.time)}\n"
     if msg:
         await bot.send(ev, msg.strip())
+
+
+@sv.on_fullmatch(("剩余补偿", "查补偿"))
+async def query_remaining_carries(bot: HoshinoBot, ev: CQEvent):
+    if not ev.group_id:
+        await bot.send(ev, "请在群内查询剩余补偿")
+        return
+    from .carry_query import format_remaining_carries
+
+    now = int(time.time())
+    records = await pcr_sqla.get_day_rcords(now, ev.group_id)
+    await bot.send(ev, format_remaining_carries(records, now))
+
+
+@sv.on_prefix("我的补偿")
+@check_account_qqid
+async def query_my_carries(bot: HoshinoBot, ev: CQEvent, account: Account, qq_id: int):
+    if not ev.group_id:
+        await bot.send(ev, "请在群内查询剩余补偿")
+        return
+    if ev.message.extract_plain_text().strip():
+        await bot.send(ev, "发送【我的补偿】查询本人，或附加 @成员 查询对方")
+        return
+    if not account.viewer_id:
+        await bot.send(ev, "尚未取得游戏ID，请重新绑定账号更新信息：【绑定账号+账号+密码】（+ 表示空格）")
+        return
+    from .carry_query import format_remaining_carries
+
+    now = int(time.time())
+    records = await pcr_sqla.get_day_rcords(now, ev.group_id)
+    await bot.send(ev, format_remaining_carries(records, now, account.viewer_id, account.name))
+
+
+@sv.on_fullmatch("分数线")
+async def rank_lines_image(bot: HoshinoBot, ev: CQEvent):
+    clan_info = clanbattle_info.get(ev.group_id)
+    if not ev.group_id or not is_monitor_running(clan_info):
+        await bot.send(ev, "请在群内开启出刀监控后查询分数线")
+        return
+    try:
+        from .status_image import build_rank_lines_payload, render_status_image
+
+        result = await get_rank_lines_cached(clan_info, list(DEFAULT_RANK_LINES))
+        picture = await asyncio.wait_for(
+            render_status_image(build_rank_lines_payload(result), view="rank"), timeout=70,
+        )
+        await bot.send(ev, picture)
+    except Exception as e:
+        logger.warning(f"分数线图片生成失败 group={ev.group_id}: {e}")
+        await bot.send(ev, "分数线图片生成失败，请稍后重试；也可使用【查档线】查询。")
 
 
 @sv.on_prefix("查档线", "档线")

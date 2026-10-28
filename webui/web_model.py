@@ -128,6 +128,21 @@ class DayDamageRank(BaseModel):
 
 
 # 注意：DashboardResponse 里引用了 DaoInfo，所以必须放在 DaoInfo 之后定义
+class FirstDayCarryForm(BaseModel):
+    automatic: bool = False
+    enabled: bool
+    date: str = ""
+
+
+class FirstDayCarryResponse(BaseModel):
+    automatic: bool = False
+    enabled: bool = False
+    date: str = ""
+    game_day: str = ""
+    effective: bool = False
+    corrected_count: int = 0
+
+
 class DashboardResponse(BaseModel):
     priority: int = 0
     clan_priority: int = 0
@@ -142,6 +157,7 @@ class DashboardResponse(BaseModel):
     boss: List[BossInfoCounter] = []
     report: list = []
     day_num: int = 0
+    first_day_carry: FirstDayCarryResponse = FirstDayCarryResponse()
     # 最近 20 条出刀记录（按时间倒序，用于仪表盘"最近出刀"卡片）
     last_dao: List[DaoInfo] = []
     # 今日伤害排行 Top N（按伤害倒序），给仪表盘右栏的横向条形图用

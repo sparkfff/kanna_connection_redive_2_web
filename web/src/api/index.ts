@@ -30,6 +30,7 @@ import type {
   ArenaProfileResult,
   FriendListResult,
   FriendRequestsResult,
+  FirstDayCarryState,
 } from '@/types'
 
 /**
@@ -54,6 +55,9 @@ export const changePassword = (data: ChangePasswordForm) =>
  */
 export const getHomeInfo = () =>
   request.get<HomeResponse>('/home').then((res) => res.data)
+
+export const setFirstDayCarry = (groupId: number, enabled: boolean, date = '', automatic = false) =>
+  request.put<FirstDayCarryState>(`/${groupId}/first_day_carry`, { enabled, date, automatic }).then((res) => res.data)
 
 /**
  * 绑定游戏账号（**全局生效**，一个 QQ 一个号，换公会 / 进新群都不用重绑）
