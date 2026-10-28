@@ -8,11 +8,11 @@
       <div class="board-column">
         <section class="summary">
           <div class="summary-stats">
-            <div class="stat pink"><span>今日完整刀</span><strong>{{ data.full_count }}</strong></div>
+            <div class="stat pink"><span>今日出刀</span><strong>{{ data.full_count + (data.tail_count + data.carry_count) / 2 }}</strong></div>
             <div class="stat purple"><span>阶段</span><strong>{{ data.stage || '—' }}</strong></div>
             <div class="stat blue"><span>当前排名</span><strong>{{ data.rank || '—' }}</strong></div>
           </div>
-          <div class="summary-line">今日尾刀 <b>{{ data.tail_count }}</b><i>·</i>今日补偿刀 <b>{{ data.carry_count }}</b></div>
+          <div class="summary-line">完整刀 <b>{{ data.full_count }}</b><i>·</i>尾刀 <b>{{ data.tail_count }}</b><i>·</i>补偿刀 <b>{{ data.carry_count }}</b></div>
           <div class="summary-line">监控人：{{ data.monitor_name }}</div>
         </section>
         <StatusBossCard v-for="(boss, index) in data.boss.slice(0, 2)" :key="index" :boss="boss" :order="index + 1" :lap-level="bossLapLevel(boss.lap, data.boss)" />
