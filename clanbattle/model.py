@@ -170,60 +170,57 @@ class ClanBattle:
         return await self.client.clan_battle_log(page, self.clan_battle_id)
 
     async def add_record(self, loop_num: int):
-        log_list: List[BattleInfo] = []
-        dao_list = []
-        with contextlib.suppress(Exception):
-            # 故意不重试，这循环极端情况下运行10分钟也正常，不如报错趁早退出，下次再来
-            log_temp = await self.get_battle_log(1)  # 获取最大页数
-            if not log_temp.battle_list:
-                return  # 数据空
+        # The API's sort_type does not prove which page is newest. Scan all
+        # pages and compare stored keys, so old failures cannot hide new logs.
+        try:
+            first = await self.get_battle_log(1)
+        except Exception:
+            logger.exception(f"Battle log page 1 failed, group={self.group_id}")
+            return
+        logs = list(first.battle_list or [])
+        pages = first.max_page if isinstance(first.max_page, int) and first.max_page > 0 else 1
+        for page in range(2, pages + 1):
+            if loop_num != self.loop_num:
+                raise CancelledError
+            try:
+                result = await self.get_battle_log(page)
+                logs.extend(result.battle_list or [])
+            except Exception:
+                logger.exception(f"Battle log page {page} failed, group={self.group_id}")
+        if not logs:
+            return
+        unique = []
+        seen = set()
+        for record in logs:
+            identity = (record.battle_log_id, record.target_viewer_id, record.lap_num,
+                        record.order_num, record.battle_end_time, record.total_damage)
+            if record.battle_log_id is not None and identity in seen:
+                continue
+            seen.add(identity)
+            unique.append(record)
+        counts = Counter(log_key(record) for record in unique)
+        self.damage_correction.invalidate_keys({key for key, count in counts.items() if count > 1})
+        timestamps = [record.battle_end_time for record in unique]
+        existing = await pcr_sqla.get_record_keys_between(self.group_id, min(timestamps), max(timestamps))
+        pending = []
+        for record in sorted(unique, key=lambda r: r.battle_end_time):
+            if loop_num != self.loop_num:
+                raise CancelledError
+            key = log_key(record)
+            if key in existing:
+                continue
+            try:
+                item = await self.general_single_record(
+                    record, record.battle_end_time, allow_damage_correction=counts[key] == 1,
+                )
+                pending.append(item)
+            except Exception:
+                # Do not advance past a failed detail permanently: the next
+                # scan checks all keys again rather than just the latest time.
+                logger.exception(f"Battle detail failed, group={self.group_id}, log={record.battle_log_id}, key={key}")
+        if pending:
+            await pcr_sqla.add_record(pending)
 
-            latest_time = await pcr_sqla.get_latest_time(self.group_id)
-            existing_keys = await pcr_sqla.get_record_keys_at(self.group_id, latest_time)
-            # Start with newest pages; stopping on an old page is only safe in
-            # this direction, otherwise an interruption can skip new reports.
-            for page in range(1, log_temp.max_page + 1):
-                log = await self.get_battle_log(page)
-                if not log.battle_list:
-                    continue
-                log_list += log.battle_list[::-1]
-                if min(r.battle_end_time for r in log.battle_list) < latest_time:
-                    break
-            # New results inserted during pagination can repeat a report on
-            # adjacent pages. Deduplicate the actual server ID plus its data;
-            # distinct IDs sharing a second remain distinct/ambiguous attacks.
-            seen_reports = set()
-            unique_logs = []
-            for record in log_list:
-                server_id = getattr(record, 'battle_log_id', None)
-                identity = (server_id, record.target_viewer_id, record.lap_num,
-                            record.order_num, record.battle_end_time, record.total_damage)
-                if server_id is not None and identity in seen_reports:
-                    continue
-                seen_reports.add(identity)
-                unique_logs.append(record)
-            log_list = unique_logs
-            key_counts = Counter(
-                (r.target_viewer_id, r.lap_num, r.order_num, r.battle_end_time)
-                for r in log_list
-            )
-            self.damage_correction.invalidate_keys(
-                {key for key, count in key_counts.items() if count > 1}
-            )
-            # Store older reports first so a failed detail request cannot move
-            # the cursor beyond an earlier report that has not been saved.
-            for record in sorted(log_list, key=lambda r: r.battle_end_time):
-                if loop_num != self.loop_num:
-                    raise CancelledError
-                time = record.battle_end_time
-                key = (record.target_viewer_id, record.lap_num, record.order_num, time)
-                if time >= latest_time and key not in existing_keys:
-                    record_dao = await self.general_single_record(
-                        record, time, allow_damage_correction=key_counts[key] == 1
-                    )
-                    dao_list.append(record_dao)
-        if dao_list:
-            await pcr_sqla.add_record(dao_list)
 
     async def general_single_record(
         self, record: BattleInfo, time: int, allow_damage_correction: bool = True

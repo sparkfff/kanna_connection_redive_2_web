@@ -334,6 +334,13 @@ class SQALA:
             )
             return {tuple(row) for row in result.all()}
 
+    async def get_record_keys_between(self, group_id: int, start: int, end: int) -> set:
+        async with self.async_session() as session:
+            result = await session.execute(select(
+                RecordDao.pcrid, RecordDao.lap, RecordDao.boss, RecordDao.time,
+            ).where(RecordDao.group_id == group_id, RecordDao.time >= start, RecordDao.time <= end))
+            return {tuple(row) for row in result.all()}
+
     async def get_history(self, id: int, group_id: int) -> RecordDao:
         async with self.async_session() as session:
             async with session.begin():
