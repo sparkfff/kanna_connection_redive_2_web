@@ -28,6 +28,8 @@ def _day_states(records, respect_policy=True):
     an earned token and cannot earn a second token. Reported unit viewer IDs
     do not reliably identify support units, so incidental overlap is ignored.
     An identical complete five-unit team cannot be another normal daily start.
+    Two or more characters from a pending tail also rule out a normal start;
+    a single shared character can be the one support unit and is ignored.
     Missing history
     is tolerated for identifiable short/manual/policy carryovers. Ambiguous
     90s attacks retain their original classification rather than moving the
@@ -54,13 +56,17 @@ def _day_states(records, respect_policy=True):
         next_states = set()
         earned = carry_seconds(record.boss_hp, record.raw_damage, start, record.battle_time)
         for starts, tokens, flags, consumed in states:
-            if not forced_carry and start == 90 and starts < 3 and (not repeated_team or forced_normal):
+            reuses_tail = any(len(units & tail_units) >= 2 for _, _, tail_units in tokens)
+            if not forced_carry and start == 90 and starts < 3 and (not repeated_team and not reuses_tail or forced_normal):
                 flag = record.flag if forced_normal else 1 if tail else 0
                 new_tokens = (*tokens, (earned, index, units)) if killed or forced_normal and flag == 1 else tokens
                 next_states.add((starts + 1, new_tokens, (*flags, flag), consumed))
             if not forced_normal:
                 # A zero token represents a confirmed tail with unknown length.
                 matches = {i for i, (length, _, _) in enumerate(tokens) if length in (0, start)}
+                reused_tokens = {i for i, (_, _, tail_units) in enumerate(tokens) if len(units & tail_units) >= 2}
+                if reused_tokens:
+                    matches &= reused_tokens
                 for i in matches:
                     next_states.add((starts, tokens[:i] + tokens[i+1:], (*flags, .5), (*consumed, (tokens[i][1], start))))
                 if forced_carry and not matches and not tokens:
