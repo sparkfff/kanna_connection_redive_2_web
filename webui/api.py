@@ -706,7 +706,7 @@ async def correct_dao_record(
         report_time[token.token] = 0
         return "修改成功"
     else:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "编号不存在或旧编号不唯一，请刷新战报后使用最新出刀编号")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "出刀编号不存在，请刷新战报后使用最新出刀编号")
 
 
 # ---- 游戏账号绑定：全局一个 QQ 一个号，网页端和 QQ 私聊写的是同一行（group_id=0）----

@@ -2,7 +2,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Union
 
-from sqlalchemy import asc, delete, desc, insert, update, or_
+from sqlalchemy import asc, delete, desc, insert, update
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.future import select
 from sqlalchemy.orm import sessionmaker
@@ -349,7 +349,7 @@ class SQALA:
             async with session.begin():
                 result = await session.execute(
                     select(RecordDao).where(
-                        or_(RecordDao.id == id, RecordDao.battle_log_id == id), RecordDao.group_id == group_id
+                        RecordDao.id == id, RecordDao.group_id == group_id
                     )
                 )
                 rows = result.scalars().all()
