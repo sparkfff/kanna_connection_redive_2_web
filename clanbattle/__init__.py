@@ -741,7 +741,7 @@ async def single_player_report(bot: HoshinoBot, ev: CQEvent):
         elif info := await pcr_sqla.get_history(int(_id), ev.group_id):
             await bot.send(ev, await dao_detial(info))
         else:
-            await bot.send(ev, "请检查你的出刀编号是否正确。")
+            await bot.send(ev, "编号不存在或旧编号不唯一，请重新查询战报，使用最新出刀编号。")
 
 
 @sv.on_rex(r"修正出刀\s?(\d+)\s?(完整刀|尾刀|补偿)")
@@ -753,7 +753,7 @@ async def correct_dao(bot: HoshinoBot, ev: CQEvent):
     ):
         await bot.send(ev, "修改成功")
     else:
-        await bot.send(ev, "请检查你输入了正确的出刀编号")
+        await bot.send(ev, "编号不存在或旧编号不唯一，请重新查询战报，使用最新出刀编号。")
 
 
 @sv.on_fullmatch("催刀")

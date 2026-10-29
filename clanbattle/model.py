@@ -235,7 +235,7 @@ class ClanBattle:
         flag = classify_knife(time_line.start_remain_time, time_line.battle_time, killed, time, policy)
         temp_dict = {
             "group_id": self.group_id,
-            "battle_log_id": time % 10000000,  # 这玩意居然会重复，受不了，直接取时间
+            "battle_log_id": 0,  # Assigned the unique database ID after insertion.
             "name": record.user_name,
             "lap": record.lap_num,
             "boss": record.order_num,
