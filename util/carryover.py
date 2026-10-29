@@ -21,7 +21,7 @@ def own_units(record):
         return frozenset()
 
 
-def _day_states(records, respect_policy=True):
+def _day_states(records):
     """Enumerate the legal daily sequences and their unconsumed tokens.
 
     A full attack or tail consumes one of three daily starts. A carry consumes
@@ -31,7 +31,9 @@ def _day_states(records, respect_policy=True):
     Two or more characters from a pending tail also rule out a normal start;
     a single shared character can be the one support unit and is ignored.
     Missing history
-    is tolerated for identifiable short/manual/policy carryovers. Ambiguous
+    is tolerated for identifiable short/manual carryovers. First-day policy
+    only changes displayed statistics; it cannot supply or consume tokens.
+    Ambiguous
     90s attacks retain their original classification rather than moving the
     error to the last attack of the day.
     """
@@ -53,7 +55,7 @@ def _day_states(records, respect_policy=True):
         # A wipe can end early too. Explicit manual choices remain authoritative.
         killed = bool(record.kill_confirmed)
         tail = killed
-        forced_carry = start < 90 or respect_policy and source == 'policy' and not killed or source == 'manual' and record.flag == .5
+        forced_carry = start < 90 or source == 'manual' and record.flag == .5
         forced_normal = source == 'manual' and record.flag != .5
         next_states = set()
         earned = carry_seconds(record.boss_hp, record.raw_damage, start, record.battle_time)
@@ -95,6 +97,12 @@ def classify_day(records):
                 observed = {dict(state[3]).get(i) for state in states}
                 if len(observed) == 1 and None not in observed:
                     seconds = observed.pop()
+            # Count real normal starts before applying the first-day display
+            # convention. Otherwise policy attacks would bypass the daily
+            # three-start limit and a later compensation kill could earn a
+            # fourth tail/token.
+            if flag == 0 and record.knife_source == 'policy':
+                flag = .5
             result[i] = (flag, seconds)
     return result
 
@@ -110,7 +118,7 @@ def remaining_carries(records):
     if len({record.time for record in records}) != len(records):
         return None
     # First-day mode changes statistics, not actual carry ownership.
-    states = _day_states(records, respect_policy=False)
+    states = _day_states(records)
     if not states:
         return None
     counts = []
