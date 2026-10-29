@@ -74,7 +74,7 @@ class RecordDao(DataBase, table=True):
     boss_hp: int = Field(default=0, title="击杀前剩余血量")
     kill_confirmed: bool = Field(default=False, title="已确认击杀")
     carry_seconds: int = Field(default=0, title="获得补偿秒数")
-    own_units: str = Field(default="", title="本人的出战角色（排除支援）")
+    own_units: str = Field(default="", title="战报角色归属信息（可能含支援，不用于硬判定）")
     knife_source: str = Field(default="", title="出刀类型判定来源")
     unit1: int = Field(title="出战角色1-ID")
     unit2: Optional[int] = Field(default=0, title="出战角色2-ID")

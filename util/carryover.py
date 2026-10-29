@@ -25,8 +25,9 @@ def _day_states(records, respect_policy=True):
     """Enumerate the legal daily sequences and their unconsumed tokens.
 
     A full attack or tail consumes one of three daily starts. A carry consumes
-    an earned token and cannot earn a second token. Own units cannot be reused
-    in a new start; borrowed units are excluded before storage. Missing history
+    an earned token and cannot earn a second token. Reported unit viewer IDs
+    do not reliably identify support units, so unit reuse is not a constraint.
+    Missing history
     is tolerated for identifiable short/manual/policy carryovers. Ambiguous
     90s attacks retain their original classification rather than moving the
     error to the last attack of the day.
@@ -34,14 +35,11 @@ def _day_states(records, respect_policy=True):
     records = list(records)
     if len(records) > 12:
         return set()
-    # (normal starts, pending (length, originating row, own units), flags)
-    states = {(0, (), ())}
-    used = frozenset()
+    # Track observed starting seconds when a later carry consumes a tail.
+    # (normal starts, pending tokens, flags, consumed (origin, seconds))
+    states = {(0, (), (), ())}
     for index, record in enumerate(records):
         units = own_units(record)
-        reused_units = units & used
-        reused = bool(reused_units)
-        used |= units
         start = record.remain_time
         source = record.knife_source or ''
         killed = bool(record.kill_confirmed or (source == '' and record.flag == 1))
@@ -50,19 +48,18 @@ def _day_states(records, respect_policy=True):
         forced_normal = source == 'manual' and record.flag != .5
         next_states = set()
         earned = carry_seconds(record.boss_hp, record.raw_damage, start, record.battle_time)
-        for starts, tokens, flags in states:
-            if not forced_carry and start == 90 and starts < 3 and (not reused or forced_normal):
+        for starts, tokens, flags, consumed in states:
+            if not forced_carry and start == 90 and starts < 3:
                 flag = record.flag if forced_normal else 1 if tail else 0
                 new_tokens = (*tokens, (earned, index, units)) if killed or forced_normal and flag == 1 else tokens
-                next_states.add((starts + 1, new_tokens, (*flags, flag)))
+                next_states.add((starts + 1, new_tokens, (*flags, flag), consumed))
             if not forced_normal:
                 # A zero token represents a confirmed tail with unknown length.
-                matches = {i for i, (length, _, original_units) in enumerate(tokens)
-                           if length in (0, start) and reused_units <= original_units}
+                matches = {i for i, (length, _, _) in enumerate(tokens) if length in (0, start)}
                 for i in matches:
-                    next_states.add((starts, tokens[:i] + tokens[i+1:], (*flags, .5)))
-                if forced_carry and not matches:
-                    next_states.add((starts, tokens, (*flags, .5)))
+                    next_states.add((starts, tokens[:i] + tokens[i+1:], (*flags, .5), (*consumed, (tokens[i][1], start))))
+                if forced_carry and not matches and not tokens:
+                    next_states.add((starts, tokens, (*flags, .5), consumed))
         states = next_states
         if not states or len(states) > 2048:
             return set()
@@ -81,6 +78,10 @@ def classify_day(records):
         if len(flags) == 1:
             flag = flags.pop()
             seconds = carry_seconds(record.boss_hp, record.raw_damage, record.remain_time, record.battle_time) if flag == 1 else 0
+            if flag == 1:
+                observed = {dict(state[3]).get(i) for state in states}
+                if len(observed) == 1 and None not in observed:
+                    seconds = observed.pop()
             result[i] = (flag, seconds)
     return result
 
@@ -100,7 +101,7 @@ def remaining_carries(records):
     if not states:
         return None
     counts = []
-    for _, tokens, _ in states:
+    for _, tokens, _, _ in states:
         lengths = {}
         for seconds, _, _ in tokens:
             lengths[seconds] = lengths.get(seconds, 0) + 1

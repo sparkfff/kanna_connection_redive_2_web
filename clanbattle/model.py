@@ -25,7 +25,7 @@ from ..login import run_group
 from ..util.task_pool import PoolBase, PrioritizedQueryItemBase
 from ..util.tools import anywhere_send
 from ..util.auto_boss import clan_boss_info
-from ..util.knife_policy import classify_knife, first_day_carry_active
+from ..util.knife_policy import classify_knife, first_day_carry_active, game_day
 from .base import find_item, format_bignum, format_precent
 from .damage_correction import DamageCorrectionTracker
 from .carry_schedule import sync_first_day_carry
@@ -96,6 +96,7 @@ class ClanBattle:
         self.refresh_latest_time(clan_battle_top)
         self.damage_correction.reset(clan_battle_top)
         await sync_first_day_carry(self.group_id, self)
+        await pcr_sqla.reclassify_carry_day(self.group_id, game_day(time.time()))
         self.members: Dict[int, str] = await self.all_member()
         self.dao_update_time = int(time.time())
 
