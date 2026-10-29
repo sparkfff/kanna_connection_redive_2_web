@@ -19,6 +19,12 @@ function redirectToDashboardTab(tab: 'report' | 'notice') {
 
 const routes: RouteRecordRaw[] = [
   {
+    path: '/clan-help-image',
+    name: 'ClanHelpImage',
+    component: () => import('@/views/ClanHelpImage.vue'),
+    meta: { title: '自动报刀帮助', requiresAuth: false }
+  },
+  {
     path: '/rank-lines-image',
     name: 'RankLinesImage',
     component: () => import('@/views/RankLinesImage.vue'),

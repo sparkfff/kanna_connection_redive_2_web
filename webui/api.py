@@ -464,7 +464,7 @@ async def clan_report(group_id: int, token: CookieCache = Depends(verify_group_a
                 date=player.time,
                 boss=player.boss,
                 lap=player.lap,
-                dao_id=player.battle_log_id,
+                dao_id=player.id,
             )
             for player in info[::-1]
         ]
@@ -487,7 +487,7 @@ async def clan_report(group_id: int, token: CookieCache = Depends(verify_group_a
                         boss=dao.boss,
                         lap=dao.lap,
                         date=dao.time,
-                        dao_id=dao.battle_log_id,
+                        dao_id=dao.id,
                     )
                 )
         response.me = response.me[::-1]
@@ -706,7 +706,7 @@ async def correct_dao_record(
         report_time[token.token] = 0
         return "修改成功"
     else:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "请检查你输入了正确的出刀编号")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "出刀编号不存在，请刷新战报后使用最新出刀编号")
 
 
 # ---- 游戏账号绑定：全局一个 QQ 一个号，网页端和 QQ 私聊写的是同一行（group_id=0）----

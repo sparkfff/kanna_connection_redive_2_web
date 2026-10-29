@@ -225,7 +225,7 @@ def build_last_dao(dao_data: List[RecordDao], limit: int = 20) -> List[DaoInfo]:
             date=player.time,
             boss=player.boss,
             lap=player.lap,
-            dao_id=player.battle_log_id,
+            dao_id=player.id,
         )
         for player in sorted_list[:limit]
     ]

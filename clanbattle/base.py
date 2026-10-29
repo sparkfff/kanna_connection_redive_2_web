@@ -616,7 +616,7 @@ async def get_plyerreport(data: List[RecordDao]) -> str:
                 f"{dao.lap}周目{dao.boss}王",
                 str(score),
                 item,
-                str(dao.battle_log_id),
+                str(dao.id),
             ]
         )
     return grid2imgb64(

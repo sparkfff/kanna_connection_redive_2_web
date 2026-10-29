@@ -30,6 +30,6 @@ def classify_knife(start_time, battle_time, killed, timestamp, policy=None):
     # Preserve directly identifiable short carryovers, including when they kill.
     if start_time < 90:
         return 0.5
-    if killed or battle_time < start_time:
+    if killed:
         return 1
     return 0.5 if first_day_carry_active(policy, timestamp) else 0

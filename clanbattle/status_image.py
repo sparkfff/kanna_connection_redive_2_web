@@ -1,8 +1,7 @@
 """Render the WebUI's group status board without a web account or public API."""
 
-import asyncio
 import base64
-import json
+import re
 import time
 from urllib.parse import urlsplit
 
@@ -13,8 +12,28 @@ from ..webui.status_data import build_boss_status
 from .carry_query import remaining_carry_members
 from ..util.knife_policy import daily_knife_total
 
-# Bound simultaneous browser instances; every request gets an isolated context.
-_render_lock = asyncio.Lock()
+
+
+def build_help_payload(text):
+    groups = {name: [] for name in ('战报与查询', '出刀协作', '监控与设置', '管理操作')}
+    notes = []
+    for line in text.splitlines():
+        match = re.match(r'^【([^】]+)】\s*(.*)$', line.strip())
+        if not match:
+            if line.strip():
+                notes.append(line.strip().lstrip('* '))
+            continue
+        command, description = match.groups()
+        if command.startswith(('清空', '启用肃正', '修正出刀', 'kpi调整', '删除kpi')):
+            group = '管理操作'
+        elif command.startswith(('出刀监控', '取消出刀监控', '开启', '关闭', '首日满补')):
+            group = '监控与设置'
+        elif command.startswith(('预约 +', '取消预约', '上树', '挂树', '下树', '申请', '进1', '取消申请', 'sl')):
+            group = '出刀协作'
+        else:
+            group = '战报与查询'
+        groups[group].append(dict(command=command, description=description))
+    return dict(sections=[dict(title=title, commands=commands) for title, commands in groups.items() if commands], notes=notes)
 
 
 async def build_status_payload(bot, group_id, clan_info):
@@ -101,8 +120,7 @@ def build_rank_lines_payload(result):
 
 
 async def render_status_image(payload, view="status"):
-    # Lazy import: deployments without Playwright still retain text status.
-    from playwright.async_api import async_playwright
+    from ..util.image_renderer import get_image_renderer
 
     url = WebSetting.status_image_url.value
     parts = urlsplit(url)
@@ -113,43 +131,12 @@ async def render_status_image(payload, view="status"):
         url = parts._replace(fragment="/daily-knives-image").geturl()
     elif view == "rank":
         url = parts._replace(fragment="/rank-lines-image").geturl()
+    elif view == "help":
+        url = parts._replace(fragment="/clan-help-image").geturl()
     elif view != "status":
         raise ValueError("未知的截图页面")
-    async with _render_lock:
-        async with async_playwright() as playwright:
-            options = {"headless": True}
-            channel = WebSetting.status_image_browser_channel.value
-            if channel:
-                options["channel"] = channel
-            browser = await playwright.chromium.launch(**options)
-            try:
-                page = await browser.new_page(
-                    viewport={"width": {"daily": 512, "rank": 700}.get(view, 960), "height": 960},
-                    device_scale_factor=2 if view in ("daily", "rank") else 1.5,
-                    locale="zh-CN", color_scheme="dark" if view == "daily" else "light",
-                )
-                # No token, account credentials, or data-bearing public URL.
-                # Data enters only this browser context, never a server endpoint.
-                await page.add_init_script(
-                    "window.__KANNA_STATUS__ = " + json.dumps(payload, ensure_ascii=True) + ";"
-                    + "localStorage.setItem('kanna.theme.v1', "
-                    + json.dumps("dark" if view == "daily" else "light") + ");"
-                )
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                board = page.locator("[data-status-board]")
-                await board.wait_for(state="visible", timeout=20000)
-                await page.evaluate("document.fonts.ready")
-                await page.evaluate("""async () => {
-                    await Promise.all(Array.from(document.querySelectorAll('[data-status-board] img')).map(img => {
-                        if (img.complete) return Promise.resolve();
-                        return new Promise(resolve => {
-                            img.addEventListener('load', resolve, {once: true});
-                            img.addEventListener('error', resolve, {once: true});
-                            setTimeout(resolve, 4000);
-                        });
-                    }));
-                }""")
-                image = await board.screenshot(type="png", animations="disabled", timeout=15000)
-                return "[CQ:image,file=base64://" + base64.b64encode(image).decode("ascii") + "]"
-            finally:
-                await browser.close()
+    result = await get_image_renderer().render(
+        url, payload, view, WebSetting.status_image_browser_channel.value,
+        WebSetting.status_image_asset_timeout_ms.value,
+    )
+    return "[CQ:image,file=base64://" + base64.b64encode(result).decode("ascii") + "]"

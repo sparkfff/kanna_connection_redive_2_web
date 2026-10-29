@@ -244,6 +244,9 @@ class SQALA:
         async with self.async_session() as session:
             async with session.begin():
                 session.add_all(dao_list)
+                await session.flush()
+                for record in dao_list:
+                    record.battle_log_id = record.id
         for group_id, day in {(r.group_id, pcr_date(r.time).strftime('%Y-%m-%d')) for r in dao_list}:
             await self.reclassify_carry_day(group_id, day)
 
@@ -346,10 +349,11 @@ class SQALA:
             async with session.begin():
                 result = await session.execute(
                     select(RecordDao).where(
-                        RecordDao.battle_log_id == id, RecordDao.group_id == group_id
+                        RecordDao.id == id, RecordDao.group_id == group_id
                     )
                 )
-                return result.scalars().one_or_none()
+                rows = result.scalars().all()
+                return rows[0] if len(rows) == 1 else None
 
     async def get_latest_time(self, group_id: int) -> int:
         async with self.async_session() as session:
@@ -452,31 +456,21 @@ class SQALA:
                 return result.scalars().all()
 
     async def correct_dao(self, dao_id: int, flag: int, group_id: int):
-        day = None
+        record = await self.get_history(dao_id, group_id)
+        if record is None:
+            return False
         async with self.async_session() as session:
             async with session.begin():
-                result = await session.execute(
-                    select(RecordDao).where(
-                        RecordDao.battle_log_id == dao_id,
-                        RecordDao.group_id == group_id,
-                    )
-                )
-                if record := result.scalar_one_or_none():
-                    await session.execute(
-                        update(RecordDao)
-                        .where(
-                            RecordDao.battle_log_id == dao_id,
-                            RecordDao.group_id == group_id,
-                        )
-                        .values(flag=flag, knife_source='manual', carry_seconds=(
-                            carry_seconds(record.boss_hp, record.raw_damage, record.remain_time, record.battle_time)
-                            if flag == 1 else 0
-                        ))
-                    )
-                    day = pcr_date(record.time).strftime('%Y-%m-%d')
-        if day:
-            await self.reclassify_carry_day(group_id, day)
-        return day is not None
+                result = await session.execute(update(RecordDao).where(
+                    RecordDao.id == record.id, RecordDao.group_id == group_id,
+                ).values(flag=flag, knife_source='manual', carry_seconds=(
+                    carry_seconds(record.boss_hp, record.raw_damage, record.remain_time, record.battle_time)
+                    if flag == 1 else 0
+                )))
+                changed = bool(result.rowcount)
+        if changed:
+            await self.reclassify_carry_day(group_id, pcr_date(record.time).strftime('%Y-%m-%d'))
+        return changed
 
     # 通知部分
     async def get_notice(

@@ -61,6 +61,8 @@ class WebSetting(Enum):
     status_image_url = "http://127.0.0.1:5173/#/status-image"
     # 留空使用 playwright install chromium 安装的浏览器；Windows 可设 msedge。
     status_image_browser_channel = ""
+    # 等待头像、Boss图标及字体的最长时间；超时使用现有占位样式。
+    status_image_asset_timeout_ms = 2000
 
 
 class BossData(Enum):

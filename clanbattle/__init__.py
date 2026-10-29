@@ -75,8 +75,8 @@ help_text = """
 【开启首日满补 + （YYYY-MM-DD）】管理：不填日期每期自动识别首日，也可手动指定日期
 【关闭首日满补】管理：后续记录恢复正常判定
 【首日满补状态】查看首日满补设置
-【清空申请】（仅）管理，清空预约
-【修正出刀 + 出刀编号 + (完整刀|尾刀|补偿)"】修正错误刀（出刀编号可以通过查看个人战报获得）
+【清空申请】（仅）管理，清空出刀申请
+【修正出刀 + 出刀编号 + (完整刀|尾刀|补偿)】修正错误刀（出刀编号可以通过查看个人战报获得）
 【会战KPI】查看等效出刀数
 【kpi调整 + 游戏id + 补正】给某个玩家额外的kpi点数，可正可负
 【清空kpi】删除所有kpi补正
@@ -113,6 +113,14 @@ def _member_command(pattern):
 
 @sv.on_fullmatch("自动报刀帮助")
 async def clanbattle_help(bot: HoshinoBot, ev: CQEvent):
+    try:
+        from .status_image import build_help_payload, render_status_image
+
+        picture = await asyncio.wait_for(render_status_image(build_help_payload(help_text), view="help"), timeout=70)
+        await bot.send(ev, picture)
+        return
+    except Exception as e:
+        logger.warning(f"自动报刀帮助图片生成失败，回退文字: {e}")
     await bot.send(ev, help_text)
 
 
@@ -741,7 +749,7 @@ async def single_player_report(bot: HoshinoBot, ev: CQEvent):
         elif info := await pcr_sqla.get_history(int(_id), ev.group_id):
             await bot.send(ev, await dao_detial(info))
         else:
-            await bot.send(ev, "请检查你的出刀编号是否正确。")
+            await bot.send(ev, "出刀编号不存在，请重新查询战报，使用最新出刀编号。")
 
 
 @sv.on_rex(r"修正出刀\s?(\d+)\s?(完整刀|尾刀|补偿)")
@@ -753,7 +761,7 @@ async def correct_dao(bot: HoshinoBot, ev: CQEvent):
     ):
         await bot.send(ev, "修改成功")
     else:
-        await bot.send(ev, "请检查你输入了正确的出刀编号")
+        await bot.send(ev, "出刀编号不存在，请重新查询战报，使用最新出刀编号。")
 
 
 @sv.on_fullmatch("催刀")
