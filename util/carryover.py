@@ -49,8 +49,10 @@ def _day_states(records, respect_policy=True):
             complete_teams.add(units)
         start = record.remain_time
         source = record.knife_source or ''
-        killed = bool(record.kill_confirmed or (source == '' and record.flag == 1))
-        tail = killed or record.battle_time < start
+        # Duration and an old inferred flag are not proof of a boss kill.
+        # A wipe can end early too. Explicit manual choices remain authoritative.
+        killed = bool(record.kill_confirmed)
+        tail = killed
         forced_carry = start < 90 or respect_policy and source == 'policy' and not killed or source == 'manual' and record.flag == .5
         forced_normal = source == 'manual' and record.flag != .5
         next_states = set()

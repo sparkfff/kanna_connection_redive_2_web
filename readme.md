@@ -10,6 +10,9 @@ WebUI图片（状态、今日/昨日出刀、分数线、帮助）复用浏览�
 
 ### 补偿秒数与满补识别
 
+尾刀自动判定只依据明确击杀记录，不再以战斗提前结束作为击杀证据。
+正常刀中途团灭仍按完整刀统计，补偿刀提前结束仍按补偿统计；迟到的击杀证据到达后再修正，手动修正优先。
+
 监控记录确认击杀前的 Boss 剩余血量、原始伤害及战斗耗时，按
 `min(90, ceil(110 - 战斗耗时 × 剩余血量 / 原始伤害))` 计算补偿秒数。
 算法参考 [pcr_calculator_plus](https://github.com/watermellye/pcr_calculator_plus/blob/master/pcr_calculator.py)；
