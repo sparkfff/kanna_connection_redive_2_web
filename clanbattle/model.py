@@ -29,6 +29,7 @@ from ..util.knife_policy import classify_knife, first_day_carry_active, game_day
 from .base import find_item, format_bignum, format_precent
 from .damage_correction import DamageCorrectionTracker
 from .carry_schedule import sync_first_day_carry
+from ..util.hp_recovery import log_key, recover_caps
 
 from traceback import format_exc
 
@@ -44,6 +45,7 @@ class ClanBattle:
         self.client = None  # 登录后由 init() 赋值；先占位，避免未初始化时属性不存在
         self.notice_dao = []
         self.notice_attacks = []
+        self.hp_recovery_time = 0
         self.notice_tree = []
         self.notice_fighter = []
         self.notice_subscribe = []
@@ -178,13 +180,29 @@ class ClanBattle:
 
             latest_time = await pcr_sqla.get_latest_time(self.group_id)
             existing_keys = await pcr_sqla.get_record_keys_at(self.group_id, latest_time)
-            for page in range(log_temp.max_page, 0, -1):
+            # Start with newest pages; stopping on an old page is only safe in
+            # this direction, otherwise an interruption can skip new reports.
+            for page in range(1, log_temp.max_page + 1):
                 log = await self.get_battle_log(page)
                 if not log.battle_list:
                     continue
-                if log.battle_list[-1].battle_end_time < latest_time:
-                    break
                 log_list += log.battle_list[::-1]
+                if min(r.battle_end_time for r in log.battle_list) < latest_time:
+                    break
+            # New results inserted during pagination can repeat a report on
+            # adjacent pages. Deduplicate the actual server ID plus its data;
+            # distinct IDs sharing a second remain distinct/ambiguous attacks.
+            seen_reports = set()
+            unique_logs = []
+            for record in log_list:
+                server_id = getattr(record, 'battle_log_id', None)
+                identity = (server_id, record.target_viewer_id, record.lap_num,
+                            record.order_num, record.battle_end_time, record.total_damage)
+                if server_id is not None and identity in seen_reports:
+                    continue
+                seen_reports.add(identity)
+                unique_logs.append(record)
+            log_list = unique_logs
             key_counts = Counter(
                 (r.target_viewer_id, r.lap_num, r.order_num, r.battle_end_time)
                 for r in log_list
@@ -192,7 +210,9 @@ class ClanBattle:
             self.damage_correction.invalidate_keys(
                 {key for key, count in key_counts.items() if count > 1}
             )
-            for record in log_list[::-1]:
+            # Store older reports first so a failed detail request cannot move
+            # the cursor beyond an earlier report that has not been saved.
+            for record in sorted(log_list, key=lambda r: r.battle_end_time):
                 if loop_num != self.loop_num:
                     raise CancelledError
                 time = record.battle_end_time
@@ -408,6 +428,46 @@ class ClanBattle:
                     del self.damage_correction.pending_caps[key]
             self.damage_correction.pending_kills.difference_update(kills)
 
+    async def recover_missing_hp(self, top):
+        now = time.time()
+        if now - self.hp_recovery_time < 120:
+            return
+        today = await pcr_sqla.get_day_rcords(int(now), self.group_id)
+        if not any(r.kill_confirmed and not r.boss_hp for r in today or []):
+            return
+        self.hp_recovery_time = now
+        battle_id = self.clan_battle_id
+        try:
+            first = await self.get_battle_log(1)
+            if not first.battle_list or not first.max_page:
+                return
+            logs = list(first.battle_list)
+            signature = [(r.battle_log_id, log_key(r), r.total_damage) for r in first.battle_list]
+            for page in range(2, first.max_page + 1):
+                result = await self.get_battle_log(page)
+                if result.max_page != first.max_page or not result.battle_list:
+                    return
+                logs.extend(result.battle_list)
+            check = await self.get_battle_log(1)
+            if (self.clan_battle_id != battle_id or check.max_page != first.max_page
+                    or signature != [(r.battle_log_id, log_key(r), r.total_damage) for r in check.battle_list or []]):
+                return
+            times = [r.battle_end_time for r in logs]
+            records = await pcr_sqla.get_recovery_records(self.group_id, min(times), max(times))
+            # Validate the configured phase's HP against the live game response.
+            # Cross-phase history without a matching live maximum is skipped.
+            live = {b.order_num: b.max_hp for b in top.boss_info or []}
+            maximums = {}
+            for r in records:
+                maximum = clan_boss_info.get_boss_max(r.lap, r.boss)
+                if maximum > 0 and maximum == live.get(r.boss):
+                    maximums[r.lap, r.boss] = int(maximum)
+            caps, raw = recover_caps(records, logs, maximums)
+            if caps:
+                await pcr_sqla.correct_kill_damage(self.group_id, caps, set(caps), raw)
+        except Exception as e:
+            logger.warning(f"会战血量恢复暂未完成 group={self.group_id}: {e}")
+
     async def all_member(self):
         clan = await self.client.clan_info(self.clan_id)
         return {player.viewer_id: player.name for player in clan.clan.members}
@@ -509,6 +569,7 @@ class ClanBattlePool(PoolBase):
             await clan_info.record_change(clan_battle_top)
             await clan_info.add_record(loop_num)
             await clan_info.reconcile_damage()
+            await clan_info.recover_missing_hp(clan_battle_top)
             await clan_info.build_attack_notices()
             await clan_info.send_notice(
                 [NoticeType.dao.value, NoticeType.tree.value]

@@ -284,6 +284,13 @@ class SQALA:
             rows = result.scalars().all()
             return rows[0] if len(rows) == 1 else None
 
+    async def get_recovery_records(self, group_id: int, start: int, end: int):
+        async with self.async_session() as session:
+            result = await session.execute(select(RecordDao).where(
+                RecordDao.group_id == group_id, RecordDao.time >= start, RecordDao.time <= end,
+            ).order_by(RecordDao.time, RecordDao.id))
+            return result.scalars().all()
+
     async def correct_kill_damage(self, group_id: int, caps: dict, kills=(), raw_damages=None):
         raw_damages = raw_damages or {}
         policy = await self.get_first_day_carry_policy(group_id)
