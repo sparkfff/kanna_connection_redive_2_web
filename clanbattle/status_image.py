@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import json
+import re
 import time
 from urllib.parse import urlsplit
 
@@ -15,6 +16,28 @@ from ..util.knife_policy import daily_knife_total
 
 # Bound simultaneous browser instances; every request gets an isolated context.
 _render_lock = asyncio.Lock()
+
+
+def build_help_payload(text):
+    groups = {name: [] for name in ('战报与查询', '出刀协作', '监控与设置', '管理操作')}
+    notes = []
+    for line in text.splitlines():
+        match = re.match(r'^【([^】]+)】\s*(.*)$', line.strip())
+        if not match:
+            if line.strip():
+                notes.append(line.strip().lstrip('* '))
+            continue
+        command, description = match.groups()
+        if command.startswith(('清空', '启用肃正', '修正出刀', 'kpi调整', '删除kpi')):
+            group = '管理操作'
+        elif command.startswith(('出刀监控', '取消出刀监控', '开启', '关闭', '首日满补')):
+            group = '监控与设置'
+        elif command.startswith(('预约 +', '取消预约', '上树', '挂树', '下树', '申请', '进1', '取消申请', 'sl')):
+            group = '出刀协作'
+        else:
+            group = '战报与查询'
+        groups[group].append(dict(command=command, description=description))
+    return dict(sections=[dict(title=title, commands=commands) for title, commands in groups.items() if commands], notes=notes)
 
 
 async def build_status_payload(bot, group_id, clan_info):
@@ -113,6 +136,8 @@ async def render_status_image(payload, view="status"):
         url = parts._replace(fragment="/daily-knives-image").geturl()
     elif view == "rank":
         url = parts._replace(fragment="/rank-lines-image").geturl()
+    elif view == "help":
+        url = parts._replace(fragment="/clan-help-image").geturl()
     elif view != "status":
         raise ValueError("未知的截图页面")
     async with _render_lock:
@@ -124,8 +149,8 @@ async def render_status_image(payload, view="status"):
             browser = await playwright.chromium.launch(**options)
             try:
                 page = await browser.new_page(
-                    viewport={"width": {"daily": 512, "rank": 700}.get(view, 960), "height": 960},
-                    device_scale_factor=2 if view in ("daily", "rank") else 1.5,
+                    viewport={"width": {"daily": 512, "rank": 700, "help": 840}.get(view, 960), "height": 960},
+                    device_scale_factor=2 if view in ("daily", "rank", "help") else 1.5,
                     locale="zh-CN", color_scheme="dark" if view == "daily" else "light",
                 )
                 # No token, account credentials, or data-bearing public URL.
