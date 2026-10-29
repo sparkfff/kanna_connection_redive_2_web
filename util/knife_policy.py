@@ -5,6 +5,14 @@ from datetime import datetime, timedelta, timezone
 GAME_TZ = timezone(timedelta(hours=8))
 
 
+def daily_knife_total(records):
+    """Same daily display rule everywhere: 1/.5 per attack, max 3 per player."""
+    players = {}
+    for record in records or []:
+        players[record.pcrid] = players.get(record.pcrid, 0) + (1 if record.flag == 0 else .5)
+    return sum(min(count, 3) for count in players.values())
+
+
 def game_day(timestamp):
     return (datetime.fromtimestamp(timestamp, GAME_TZ) - timedelta(hours=5)).strftime("%Y-%m-%d")
 

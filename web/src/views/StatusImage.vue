@@ -8,7 +8,7 @@
       <div class="board-column">
         <section class="summary">
           <div class="summary-stats">
-            <div class="stat pink"><span>今日出刀</span><strong>{{ data.full_count + (data.tail_count + data.carry_count) / 2 }}</strong></div>
+            <div class="stat pink"><span>今日出刀</span><strong>{{ data.daily_count ?? (data.full_count + (data.tail_count + data.carry_count) / 2) }}</strong></div>
             <div class="stat purple"><span>阶段</span><strong>{{ data.stage || '—' }}</strong></div>
             <div class="stat blue"><span>当前排名</span><strong>{{ data.rank || '—' }}</strong></div>
           </div>
@@ -31,7 +31,7 @@
         <StatusBossCard v-for="(boss, index) in data.boss.slice(2)" :key="index" :boss="boss" :order="index + 3" :lap-level="bossLapLevel(boss.lap, data.boss)" />
       </div>
     </div>
-    <footer class="board-footer">刀数及剩余补偿按今日战报推算 · 预约/申请/挂树显示近 24 小时记录<br />近期入场人数来自游戏接口，不代表全部未结算成员</footer>
+    <footer class="board-footer">今日出刀每人最多计3刀 · 分类数量保留实际记录 · 剩余补偿按今日战报推算<br />预约/申请/挂树显示近24小时记录 · 近期入场人数不代表全部未结算成员</footer>
   </main>
   <div v-else class="no-payload">此页面由机器人生成状态图片，不通过网址读取群数据。</div>
 </template>

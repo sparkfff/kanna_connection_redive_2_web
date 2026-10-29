@@ -11,6 +11,7 @@ from ..database.dal import pcr_sqla, pcr_date
 from ..setting import WebSetting
 from ..webui.status_data import build_boss_status
 from .carry_query import remaining_carry_members
+from ..util.knife_policy import daily_knife_total
 
 # Bound simultaneous browser instances; every request gets an isolated context.
 _render_lock = asyncio.Lock()
@@ -57,6 +58,7 @@ async def build_status_payload(bot, group_id, clan_info):
         "monitor_name": names.get(int(clan_info.user_id), str(clan_info.user_id)),
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
         "full_count": sum(record.flag == 0 for record in records),
+        "daily_count": daily_knife_total(records),
         "tail_count": sum(record.flag == 1 for record in records),
         "carry_count": sum(record.flag == 0.5 for record in records),
         "remaining_carries": remaining,
