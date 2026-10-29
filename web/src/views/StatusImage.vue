@@ -8,12 +8,22 @@
       <div class="board-column">
         <section class="summary">
           <div class="summary-stats">
-            <div class="stat pink"><span>今日出刀</span><strong>{{ data.full_count + (data.tail_count + data.carry_count) / 2 }}</strong></div>
+            <div class="stat pink"><span>今日出刀</span><strong>{{ data.daily_count ?? (data.full_count + (data.tail_count + data.carry_count) / 2) }}</strong></div>
             <div class="stat purple"><span>阶段</span><strong>{{ data.stage || '—' }}</strong></div>
             <div class="stat blue"><span>当前排名</span><strong>{{ data.rank || '—' }}</strong></div>
           </div>
           <div class="summary-line">完整刀 <b>{{ data.full_count }}</b><i>·</i>尾刀 <b>{{ data.tail_count }}</b><i>·</i>补偿刀 <b>{{ data.carry_count }}</b></div>
           <div class="summary-line">监控人：{{ data.monitor_name }}</div>
+          <div class="carry-roster">
+            <span class="carry-label">剩余<br />补偿</span>
+            <div v-if="data.remaining_carries?.length" class="carry-members">
+              <span v-for="member in data.remaining_carries" :key="member.pcrid" class="carry-member" :class="{ uncertain: member.uncertain }">
+                <el-avatar :size="22" :src="member.qq_id ? `https://q1.qlogo.cn/g?b=qq&amp;nk=${member.qq_id}&amp;s=100` : undefined">{{ member.name.slice(0, 1) }}</el-avatar>
+                <b>{{ member.name }}</b><span>{{ member.detail }}</span>
+              </span>
+            </div>
+            <span v-else class="carry-empty">暂无已记录的剩余补偿</span>
+          </div>
         </section>
         <StatusBossCard v-for="(boss, index) in data.boss.slice(0, 2)" :key="index" :boss="boss" :order="index + 1" :lap-level="bossLapLevel(boss.lap, data.boss)" />
       </div>
@@ -21,7 +31,7 @@
         <StatusBossCard v-for="(boss, index) in data.boss.slice(2)" :key="index" :boss="boss" :order="index + 3" :lap-level="bossLapLevel(boss.lap, data.boss)" />
       </div>
     </div>
-    <footer class="board-footer">刀数为今日已记录战报 · 名单显示近 24 小时记录<br />近期入场人数来自游戏接口，不代表全部未结算成员</footer>
+    <footer class="board-footer">今日出刀每人最多计3刀 · 分类数量保留实际记录 · 剩余补偿按今日战报推算<br />预约/申请/挂树显示近24小时记录 · 近期入场人数不代表全部未结算成员</footer>
   </main>
   <div v-else class="no-payload">此页面由机器人生成状态图片，不通过网址读取群数据。</div>
 </template>
@@ -54,6 +64,13 @@ h1 { font-size: 26px; line-height: 1.3; margin: 0; overflow-wrap: anywhere; }
 .blue { background: #d9edf8; color: #397e9e; }
 .summary-line { line-height: 1.9; font-size: 15px; color: #7a6c55; overflow-wrap: anywhere; }
 .summary-line i { font-style: normal; padding: 0 12px; }
+.carry-roster { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px; background: #efefec; border-radius: 7px; font-size: 14px; }
+.carry-label { flex: none; line-height: 1.5; font-weight: bold; color: #655c50; }
+.carry-members { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.carry-member { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 7px; max-width: 100%; padding: 3px 8px; border-radius: 9px; background: #dedfd9; line-height: 1.5; overflow-wrap: anywhere; }
+.carry-member .el-avatar { flex-shrink: 0; background: #c9c6b9; color: #655c50; font-size: 12px; }
+.carry-member.uncertain { background: #fff0cc; color: #8a601c; }
+.carry-empty { flex: 1; text-align: center; color: #8b8173; }
 .board-footer { font-size: 12px; line-height: 1.8; color: #978456; margin-top: 20px; text-align: center; }
 .no-payload { padding: 32px; }
 </style>

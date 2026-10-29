@@ -10,6 +10,8 @@ from ..basedata import NoticeType
 from ..database.dal import pcr_sqla, pcr_date
 from ..setting import WebSetting
 from ..webui.status_data import build_boss_status
+from .carry_query import remaining_carry_members
+from ..util.knife_policy import daily_knife_total
 
 # Bound simultaneous browser instances; every request gets an isolated context.
 _render_lock = asyncio.Lock()
@@ -37,11 +39,16 @@ async def build_status_payload(bot, group_id, clan_info):
                 continue
             bosses[notice.boss - 1][label].append({
                 "name": names.get(int(notice.user_id), str(notice.user_id)),
+                "qq_id": str(notice.user_id),
                 "text": notice.text or "",
                 "lap": notice.lap or 0,
             })
     records = await pcr_sqla.get_day_rcords(now, group_id)
     records = records or []
+    remaining = [member for member in remaining_carry_members(records, now) if member['has_remaining']]
+    player_qqs = await pcr_sqla.get_group_player_qqs(group_id, names.keys()) if remaining else {}
+    for member in remaining:
+        member['qq_id'] = player_qqs.get(member['pcrid'])
     running = bool(clan_info.loop_check)
     return {
         "clan_name": clan_info.clan_name or f"群 {group_id}",
@@ -51,8 +58,10 @@ async def build_status_payload(bot, group_id, clan_info):
         "monitor_name": names.get(int(clan_info.user_id), str(clan_info.user_id)),
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
         "full_count": sum(record.flag == 0 for record in records),
+        "daily_count": daily_knife_total(records),
         "tail_count": sum(record.flag == 1 for record in records),
         "carry_count": sum(record.flag == 0.5 for record in records),
+        "remaining_carries": remaining,
         "boss": bosses,
     }
 

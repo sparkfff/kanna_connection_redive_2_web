@@ -10,6 +10,7 @@ from ..clanbattle.base import clan_boss_info, day_report
 from ..database.dal import pcr_sqla
 from ..database.models import ClanBattleMember, CookieCache, RecordDao
 from ..util.tools import daoflag2str
+from ..util.knife_policy import daily_knife_total
 from .web_model import DaoInfo
 
 
@@ -199,7 +200,7 @@ async def verify_group_access(
 async def get_day_dao(
     dao_data: List[RecordDao], members: Dict[int, str] = None
 ) -> Tuple[int, list]:
-    total = 0
+    total = daily_knife_total(dao_data)
     state = {3: [], 2.5: [], 2: [], 1.5: [], 1: [], 0.5: [], 0: []}
     # 传入完整公会名单（监控开启时）可统计出 0 刀（未出刀）成员
     report_info = await day_report(dao_data, members or {})
@@ -207,7 +208,6 @@ async def get_day_dao(
         name = member[1]
         dao = min(member[2], 3)
         state[dao].append(name)
-        total += dao
 
     return total, [{"dao_num": dao, "names": state[dao]} for dao in state if state[dao]]
 

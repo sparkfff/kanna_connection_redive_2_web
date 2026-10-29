@@ -19,6 +19,7 @@
       <div class="member-list">
         <span v-if="!boss[section.key].length" class="empty">{{ section.empty }}</span>
         <span v-for="(member, index) in boss[section.key]" :key="index" class="member-chip">
+          <el-avatar :size="22" :src="member.qq_id ? `https://q1.qlogo.cn/g?b=qq&amp;nk=${member.qq_id}&amp;s=100` : undefined">{{ member.name.slice(0, 1) }}</el-avatar>
           <b>{{ member.name }}</b>
           <span v-if="member.lap">{{ member.lap }} 周目</span>
           <span v-if="member.text">{{ member.text }}</span>
@@ -68,7 +69,8 @@ h2 { font-size: 21px; line-height: 1.25; font-weight: 700; margin: 0; overflow-w
 .row-label { display: flex; align-items: center; justify-content: center; width: 46px; padding: 10px; flex-shrink: 0; font-size: 19px; font-weight: 700; border-right: 1px solid #ffffff90; }
 .member-list { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; min-width: 0; }
 .empty { text-align: center; width: 100%; color: #706957; font-size: 18px; }
-.member-chip { display: flex; flex-wrap: wrap; gap: 4px 7px; align-items: baseline; max-width: 100%; padding: 4px 9px; border-radius: 10px; background: #ffffffa6; font-size: 15px; overflow-wrap: anywhere; }
+.member-chip { display: flex; flex-wrap: wrap; gap: 4px 7px; align-items: center; max-width: 100%; padding: 4px 9px; border-radius: 10px; background: #ffffffa6; font-size: 15px; overflow-wrap: anywhere; }
+.member-chip .el-avatar { flex-shrink: 0; background: #d5d0c2; color: #655c50; font-size: 12px; }
 .member-chip b { font-weight: 600; }
 .member-chip span { color: #706957; font-size: 13px; }
 footer { color: #93866a; font-size: 11px; margin-top: 10px; }

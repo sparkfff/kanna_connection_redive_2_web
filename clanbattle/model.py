@@ -25,10 +25,11 @@ from ..login import run_group
 from ..util.task_pool import PoolBase, PrioritizedQueryItemBase
 from ..util.tools import anywhere_send
 from ..util.auto_boss import clan_boss_info
-from ..util.knife_policy import classify_knife, first_day_carry_active
+from ..util.knife_policy import classify_knife, first_day_carry_active, game_day
 from .base import find_item, format_bignum, format_precent
 from .damage_correction import DamageCorrectionTracker
 from .carry_schedule import sync_first_day_carry
+from ..util.hp_recovery import log_key, recover_caps
 
 from traceback import format_exc
 
@@ -44,6 +45,7 @@ class ClanBattle:
         self.client = None  # 登录后由 init() 赋值；先占位，避免未初始化时属性不存在
         self.notice_dao = []
         self.notice_attacks = []
+        self.hp_recovery_time = 0
         self.notice_tree = []
         self.notice_fighter = []
         self.notice_subscribe = []
@@ -96,6 +98,7 @@ class ClanBattle:
         self.refresh_latest_time(clan_battle_top)
         self.damage_correction.reset(clan_battle_top)
         await sync_first_day_carry(self.group_id, self)
+        await pcr_sqla.reclassify_carry_day(self.group_id, game_day(time.time()))
         self.members: Dict[int, str] = await self.all_member()
         self.dao_update_time = int(time.time())
 
@@ -167,42 +170,57 @@ class ClanBattle:
         return await self.client.clan_battle_log(page, self.clan_battle_id)
 
     async def add_record(self, loop_num: int):
-        log_list: List[BattleInfo] = []
-        dao_list = []
-        with contextlib.suppress(Exception):
-            # 故意不重试，这循环极端情况下运行10分钟也正常，不如报错趁早退出，下次再来
-            log_temp = await self.get_battle_log(1)  # 获取最大页数
-            if not log_temp.battle_list:
-                return  # 数据空
+        # The API's sort_type does not prove which page is newest. Scan all
+        # pages and compare stored keys, so old failures cannot hide new logs.
+        try:
+            first = await self.get_battle_log(1)
+        except Exception:
+            logger.exception(f"Battle log page 1 failed, group={self.group_id}")
+            return
+        logs = list(first.battle_list or [])
+        pages = first.max_page if isinstance(first.max_page, int) and first.max_page > 0 else 1
+        for page in range(2, pages + 1):
+            if loop_num != self.loop_num:
+                raise CancelledError
+            try:
+                result = await self.get_battle_log(page)
+                logs.extend(result.battle_list or [])
+            except Exception:
+                logger.exception(f"Battle log page {page} failed, group={self.group_id}")
+        if not logs:
+            return
+        unique = []
+        seen = set()
+        for record in logs:
+            identity = (record.battle_log_id, record.target_viewer_id, record.lap_num,
+                        record.order_num, record.battle_end_time, record.total_damage)
+            if record.battle_log_id is not None and identity in seen:
+                continue
+            seen.add(identity)
+            unique.append(record)
+        counts = Counter(log_key(record) for record in unique)
+        self.damage_correction.invalidate_keys({key for key, count in counts.items() if count > 1})
+        timestamps = [record.battle_end_time for record in unique]
+        existing = await pcr_sqla.get_record_keys_between(self.group_id, min(timestamps), max(timestamps))
+        pending = []
+        for record in sorted(unique, key=lambda r: r.battle_end_time):
+            if loop_num != self.loop_num:
+                raise CancelledError
+            key = log_key(record)
+            if key in existing:
+                continue
+            try:
+                item = await self.general_single_record(
+                    record, record.battle_end_time, allow_damage_correction=counts[key] == 1,
+                )
+                pending.append(item)
+            except Exception:
+                # Do not advance past a failed detail permanently: the next
+                # scan checks all keys again rather than just the latest time.
+                logger.exception(f"Battle detail failed, group={self.group_id}, log={record.battle_log_id}, key={key}")
+        if pending:
+            await pcr_sqla.add_record(pending)
 
-            latest_time = await pcr_sqla.get_latest_time(self.group_id)
-            existing_keys = await pcr_sqla.get_record_keys_at(self.group_id, latest_time)
-            for page in range(log_temp.max_page, 0, -1):
-                log = await self.get_battle_log(page)
-                if not log.battle_list:
-                    continue
-                if log.battle_list[-1].battle_end_time < latest_time:
-                    break
-                log_list += log.battle_list[::-1]
-            key_counts = Counter(
-                (r.target_viewer_id, r.lap_num, r.order_num, r.battle_end_time)
-                for r in log_list
-            )
-            self.damage_correction.invalidate_keys(
-                {key for key, count in key_counts.items() if count > 1}
-            )
-            for record in log_list[::-1]:
-                if loop_num != self.loop_num:
-                    raise CancelledError
-                time = record.battle_end_time
-                key = (record.target_viewer_id, record.lap_num, record.order_num, time)
-                if time >= latest_time and key not in existing_keys:
-                    record_dao = await self.general_single_record(
-                        record, time, allow_damage_correction=key_counts[key] == 1
-                    )
-                    dao_list.append(record_dao)
-        if dao_list:
-            await pcr_sqla.add_record(dao_list)
 
     async def general_single_record(
         self, record: BattleInfo, time: int, allow_damage_correction: bool = True
@@ -387,7 +405,7 @@ class ClanBattle:
                     pending.append((history, damage, correction, attempts + 1))
                     continue
                 if record is not None and record.carry_seconds > 0:
-                    suffix = f"获得延长战斗时间{record.carry_seconds}s。"
+                    suffix = f"获得了{record.carry_seconds}s的返还时间。"
             self.notice_dao.append(
                 f"{history.name}对{history.lap_num}周目{history.order_num}王造成{damage}点伤害"
                 f"{'并击破' if history.kill else ''}{correction}。{suffix}"
@@ -406,6 +424,46 @@ class ClanBattle:
                 if self.damage_correction.pending_caps.get(key) == cap:
                     del self.damage_correction.pending_caps[key]
             self.damage_correction.pending_kills.difference_update(kills)
+
+    async def recover_missing_hp(self, top):
+        now = time.time()
+        if now - self.hp_recovery_time < 120:
+            return
+        today = await pcr_sqla.get_day_rcords(int(now), self.group_id)
+        if not any(r.kill_confirmed and not r.boss_hp for r in today or []):
+            return
+        self.hp_recovery_time = now
+        battle_id = self.clan_battle_id
+        try:
+            first = await self.get_battle_log(1)
+            if not first.battle_list or not first.max_page:
+                return
+            logs = list(first.battle_list)
+            signature = [(r.battle_log_id, log_key(r), r.total_damage) for r in first.battle_list]
+            for page in range(2, first.max_page + 1):
+                result = await self.get_battle_log(page)
+                if result.max_page != first.max_page or not result.battle_list:
+                    return
+                logs.extend(result.battle_list)
+            check = await self.get_battle_log(1)
+            if (self.clan_battle_id != battle_id or check.max_page != first.max_page
+                    or signature != [(r.battle_log_id, log_key(r), r.total_damage) for r in check.battle_list or []]):
+                return
+            times = [r.battle_end_time for r in logs]
+            records = await pcr_sqla.get_recovery_records(self.group_id, min(times), max(times))
+            # Validate the configured phase's HP against the live game response.
+            # Cross-phase history without a matching live maximum is skipped.
+            live = {b.order_num: b.max_hp for b in top.boss_info or []}
+            maximums = {}
+            for r in records:
+                maximum = clan_boss_info.get_boss_max(r.lap, r.boss)
+                if maximum > 0 and maximum == live.get(r.boss):
+                    maximums[r.lap, r.boss] = int(maximum)
+            caps, raw = recover_caps(records, logs, maximums)
+            if caps:
+                await pcr_sqla.correct_kill_damage(self.group_id, caps, set(caps), raw)
+        except Exception as e:
+            logger.warning(f"会战血量恢复暂未完成 group={self.group_id}: {e}")
 
     async def all_member(self):
         clan = await self.client.clan_info(self.clan_id)
@@ -508,6 +566,7 @@ class ClanBattlePool(PoolBase):
             await clan_info.record_change(clan_battle_top)
             await clan_info.add_record(loop_num)
             await clan_info.reconcile_damage()
+            await clan_info.recover_missing_hp(clan_battle_top)
             await clan_info.build_attack_notices()
             await clan_info.send_notice(
                 [NoticeType.dao.value, NoticeType.tree.value]

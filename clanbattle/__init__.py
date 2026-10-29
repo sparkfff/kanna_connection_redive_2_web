@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import re
 import time
 from typing import Dict
@@ -15,6 +16,7 @@ from ..login import query
 from ..setting import ClientSetting
 from ..util.auto_boss import clan_boss_info
 from ..util.knife_policy import first_day_carry_active, first_day_window, game_day
+from ..util.tools import get_qid
 from .carry_schedule import sync_first_day_carry
 from ..util.decorator import (
     check_account_qqid,
@@ -69,6 +71,7 @@ help_text = """
 【申请出刀 + 数字 + （留言） 】 申请打boss，boss死亡自动清空
 【进1～进5】快速申请对应boss，也可附加留言，例如【进3 合刀】
 【取消申请】/【不打了】取消本人的出刀申请
+个人操作（预约/取消预约、进/申请出刀、取消申请/不打了、挂树/下树、sl/sl?）附加 @成员 时，操作该成员；不 @ 时操作自己
 【开启首日满补 + （YYYY-MM-DD）】管理：不填日期每期自动识别首日，也可手动指定日期
 【关闭首日满补】管理：后续记录恢复正常判定
 【首日满补状态】查看首日满补设置
@@ -91,6 +94,21 @@ sv = Service(
     enable_on_default=True,  # 默认启用
     help_=help_text,  # 帮助说明
 )
+
+
+def _member_command(pattern):
+    """Accept mentions around a personal command, parse arguments as text only."""
+    mention = r"\[CQ:at,qq=\d+\]"
+    def decorate(func):
+        @functools.wraps(func)
+        async def wrapper(bot, ev):
+            match = re.fullmatch(pattern, ev.message.extract_plain_text().strip())
+            if match is None:
+                return
+            ev['match'] = match
+            return await func(bot, ev)
+        return sv.on_rex(r"^(?:" + mention + r"\s*)*(?:" + pattern + r")(?:\s*" + mention + r")*\s*$")(wrapper)
+    return decorate
 
 
 @sv.on_fullmatch("自动报刀帮助")
@@ -432,7 +450,7 @@ async def query_clan_rank_lines(bot: HoshinoBot, ev: CQEvent):
     await bot.send(ev, msg.strip())
 
 
-@sv.on_rex(r"^预约\s?(\d)(\s\d+)?(\s\S*)?$")
+@_member_command(r"预约\s?(\d)(\s\d+)?(\s\S*)?")
 async def subscirbe(bot: HoshinoBot, ev: CQEvent):
     match = ev["match"]
     boss = int(match.group(1))
@@ -459,7 +477,7 @@ async def subscirbe(bot: HoshinoBot, ev: CQEvent):
         NoticeCache(
             group_id=ev.group_id,
             notice_type=NoticeType.subscribe.value,
-            user_id=ev.user_id,
+            user_id=get_qid(ev)[0],
             boss=boss,
             lap=lap,
             text=text,
@@ -497,9 +515,9 @@ async def formsubscribe(bot: HoshinoBot, ev: CQEvent):
     )
 
 
-@sv.on_rex(r"^取消预约\s?(\d)$")
-@check_priv_adimin()
-async def cancelsubscirbe(bot: HoshinoBot, ev: CQEvent, qq_id: int):
+@_member_command(r"取消预约\s?(\d)")
+async def cancelsubscirbe(bot: HoshinoBot, ev: CQEvent):
+    qq_id = get_qid(ev)[0]
     boss = int(ev["match"].group(1))
 
     if boss > 5 or boss < 1:
@@ -525,11 +543,11 @@ async def cleansubscirbe(bot: HoshinoBot, ev: CQEvent, qq_id: int):
     await bot.send(ev, "清除成功", at_sender=True)
 
 
-@sv.on_fullmatch(("sl", "SL", "Sl"))
+@_member_command(r"(?:sl|SL|Sl)")
 async def addsl(bot: HoshinoBot, ev: CQEvent):
 
     if await pcr_sqla.add_sl(
-        SLDao(group_id=ev.group_id, user_id=ev.user_id, time=int(time.time()))
+        SLDao(group_id=ev.group_id, user_id=get_qid(ev)[0], time=int(time.time()))
     ):
         notice_update_time[ev.group_id] = int(time.time())
         await bot.send(ev, "SL已记录", at_sender=True)
@@ -537,15 +555,15 @@ async def addsl(bot: HoshinoBot, ev: CQEvent):
         await bot.send(ev, "今天已经SL过了", at_sender=True)
 
 
-@sv.on_fullmatch(("sl?", "SL?", "sl？", "SL？"))
+@_member_command(r"(?:sl|SL)[?？]")
 async def issl(bot: HoshinoBot, ev: CQEvent):
-    if await pcr_sqla.check_sl(ev.user_id, ev.group_id):
+    if await pcr_sqla.check_sl(get_qid(ev)[0], ev.group_id):
         await bot.send(ev, "今天已经SL过了", at_sender=True)
     else:
         await bot.send(ev, "今天还没有使用过SL", at_sender=True)
 
 
-@sv.on_rex(r"^(上|挂)树\s?(\d)\s?(.+)?$")
+@_member_command(r"(上|挂)树\s?(\d)\s?(.+)?")
 async def climbtree(bot: HoshinoBot, ev: CQEvent):
     match: re.Match = ev["match"]
     boss = match[2]
@@ -554,7 +572,7 @@ async def climbtree(bot: HoshinoBot, ev: CQEvent):
         NoticeCache(
             group_id=ev.group_id,
             notice_type=NoticeType.tree.value,
-            user_id=ev.user_id,
+            user_id=get_qid(ev)[0],
             boss=boss,
             text=text,
         )
@@ -563,9 +581,9 @@ async def climbtree(bot: HoshinoBot, ev: CQEvent):
     await bot.send(ev, "上树成功", at_sender=True)
 
 
-@sv.on_fullmatch("下树")
+@_member_command(r"下树")
 async def offtree(bot: HoshinoBot, ev: CQEvent):
-    await pcr_sqla.delete_notice(NoticeType.tree.value, ev.group_id, user_id=ev.user_id)
+    await pcr_sqla.delete_notice(NoticeType.tree.value, ev.group_id, user_id=get_qid(ev)[0])
     notice_update_time[ev.group_id] = int(time.time())
     await bot.send(ev, "下树成功", at_sender=True)
 
@@ -584,7 +602,7 @@ async def checktree(bot: HoshinoBot, ev: CQEvent):
     await bot.send(ev, reply or "目前树上空空如也")
 
 
-@sv.on_rex(r"^(?:申请出刀|进)\s?([1-5])(?!\d)\s?(\S+)?$")
+@_member_command(r"(?:申请出刀|进)\s?([1-5])(?!\d)\s?(\S+)?")
 async def apply(bot: HoshinoBot, ev: CQEvent):
 
     match: re.Match = ev["match"]
@@ -595,7 +613,7 @@ async def apply(bot: HoshinoBot, ev: CQEvent):
         NoticeCache(
             group_id=ev.group_id,
             notice_type=NoticeType.apply.value,
-            user_id=ev.user_id,
+            user_id=get_qid(ev)[0],
             boss=boss,
             text=text,
         )
@@ -617,10 +635,9 @@ async def apply(bot: HoshinoBot, ev: CQEvent):
     await bot.send(ev, msg.strip())
 
 
-@sv.on_prefix("取消申请")
-@sv.on_fullmatch("不打了")
-@check_priv_adimin()
-async def cancel_apply(bot: HoshinoBot, ev: CQEvent, qq_id: int):
+@_member_command(r"(?:取消申请|不打了)")
+async def cancel_apply(bot: HoshinoBot, ev: CQEvent):
+    qq_id = get_qid(ev)[0]
 
     await pcr_sqla.delete_notice(NoticeType.apply.value, ev.group_id, user_id=qq_id)
     notice_update_time[ev.group_id] = int(time.time())

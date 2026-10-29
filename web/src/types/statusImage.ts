@@ -1,6 +1,7 @@
 import type { BossInfoCounter } from './index'
 
 export interface StatusMember {
+  qq_id?: string
   name: string
   text: string
   lap: number
@@ -20,7 +21,9 @@ export interface StatusImageData {
   monitor_name: string
   generated_at: string
   full_count: number
+  daily_count?: number
   tail_count: number
   carry_count: number
+  remaining_carries?: { pcrid: number; name: string; detail: string; uncertain: boolean; qq_id?: string | null }[]
   boss: StatusBoss[]
 }
