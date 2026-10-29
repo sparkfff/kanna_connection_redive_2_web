@@ -388,7 +388,7 @@ class ClanBattle:
                     pending.append((history, damage, correction, attempts + 1))
                     continue
                 if record is not None and record.carry_seconds > 0:
-                    suffix = f"获得延长战斗时间{record.carry_seconds}s。"
+                    suffix = f"获得了{record.carry_seconds}s的返还时间。"
             self.notice_dao.append(
                 f"{history.name}对{history.lap_num}周目{history.order_num}王造成{damage}点伤害"
                 f"{'并击破' if history.kill else ''}{correction}。{suffix}"
