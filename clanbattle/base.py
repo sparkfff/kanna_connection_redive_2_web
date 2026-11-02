@@ -238,19 +238,6 @@ def rank_lines_pic(data: dict, qq: str, updated_at: int = 0) -> str:
             text += (
                 f"　奖励 宝石{rw.get('gem')} / 行会币{rw.get('coin')} / 碎片{rw.get('shard')}\n"
             )
-    my = data["my"]
-    text += "─" * 22 + f"\n我团：第{my['rank']}名  分数 {_fmt(my['damage'])}\n"
-    # 与上一档线（排名比我好的最近档位）的差距
-    better_lines = [
-        line for line in data["lines"] if line and my["rank"] and line["rank"] < my["rank"]
-    ]
-    if better_lines and my["damage"] is not None:
-        prev = max(better_lines, key=lambda x: x["rank"])
-        diff = prev["damage"] - my["damage"]
-        if diff <= 0:
-            text += f"已超过{prev['rank']}名档线 {abs(diff):,} 分数\n"
-        else:
-            text += f"距{prev['rank']}名档线还差 {diff:,}（约 {diff // 100000000} 亿）\n"
     text += f"\n自定义档位：查档线 500 2000\nqq：{qq}"
     return image_draw(text)
 
@@ -488,7 +475,7 @@ async def query_rank_lines(clan_info, targets: List[int]) -> dict:
 
 
 async def get_rank_lines_cached(
-    clan_info, targets: List[int], force: bool = False
+    clan_info, targets: List[int], force: bool = False, *, group_id: int = None
 ) -> dict:
     """带本地缓存的档线查询（网页端接口和 QQ 指令共用这一条路）。
 
@@ -500,9 +487,10 @@ async def get_rank_lines_cached(
     「同一槽位」用 `rank_line_slot()` 判，不是滚动 TTL：只要上次抓取落在槽位中途，
     TTL 就会把下一次定时刷新吃掉、让用户整轮看不到新数据（详见 `rank_line_slot`）。
 
-    :param clan_info: ClanBattle 监控对象（需已登录 client）
+    :param clan_info: ClanBattle 监控对象；未开启监控时可为 None，只读缓存
     :param targets:   要查询的排名档位列表
-    :param force:     True = 忽略缓存强制抓一次
+    :param force:     True = 监控运行时忽略缓存强制抓一次
+    :param group_id:  未开启过监控、没有 clan_info 时用于查找本群缓存
     :return: {
         "data": query_rank_lines 的返回值,
         "cached": bool,      # True = 本次没去抓游戏接口
@@ -512,8 +500,22 @@ async def get_rank_lines_cached(
     :raises ValueError: 档位非法 / 接口失败 / 功能被禁用；此时若一张缓存都没有则原样抛出
     """
     targets = sorted({int(t) for t in targets})
+    if not targets or targets[0] < 1 or targets[-1] > 60000:
+        raise ValueError("排名档位需在 1~60000 之间")
     ranks_key = ",".join(str(t) for t in targets)
-    group_id = int(clan_info.group_id)
+    group_id = int(clan_info.group_id if clan_info is not None else group_id)
+    # 停监控后对象可能仍在，重启后则可能不存在；两种情况都只读本群缓存。
+    # 即使 force=True 也不能触发游戏接口或重登。
+    if not is_monitor_running(clan_info):
+        cached = await pcr_sqla.get_latest_rank_line_cache(group_id, ranks_key)
+        if cached is None:
+            raise ValueError("本群暂无对应档位的缓存，请先开启出刀监控并查询一次档线")
+        return {
+            "data": json.loads(cached.payload),
+            "cached": True,
+            "stale": True,
+            "updated_at": int(cached.updated_at),
+        }
     clan_battle_id = int(clan_info.clan_battle_id or 0)
 
     # 拿得到本届编号才查缓存；编号为空说明监控还没初始化完，直接去抓（那边会报错）
