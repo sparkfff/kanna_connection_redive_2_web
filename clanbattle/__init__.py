@@ -35,7 +35,6 @@ from .base import (
     get_kpireport,
     clanbattle_report,
     get_rank_lines_cached,
-    is_monitor_running,
     rank_lines_pic,
 )
 
@@ -365,13 +364,19 @@ async def query_my_carries(bot: HoshinoBot, ev: CQEvent, account: Account, qq_id
 @sv.on_fullmatch("分数线")
 async def rank_lines_image(bot: HoshinoBot, ev: CQEvent):
     clan_info = clanbattle_info.get(ev.group_id)
-    if not ev.group_id or not is_monitor_running(clan_info):
-        await bot.send(ev, "请在群内开启出刀监控后查询分数线")
+    if not ev.group_id:
+        await bot.send(ev, "请在群内查询分数线")
         return
     try:
         from .status_image import build_rank_lines_payload, render_status_image
 
-        result = await get_rank_lines_cached(clan_info, list(DEFAULT_RANK_LINES))
+        try:
+            result = await get_rank_lines_cached(
+                clan_info, list(DEFAULT_RANK_LINES), group_id=ev.group_id,
+            )
+        except ValueError as e:
+            await bot.send(ev, str(e))
+            return
         picture = await asyncio.wait_for(
             render_status_image(build_rank_lines_payload(result), view="rank"), timeout=70,
         )
@@ -386,10 +391,8 @@ async def query_clan_rank_lines(bot: HoshinoBot, ev: CQEvent):
     """查档线 [排名...]：默认展示常用档位，可自定义排名（如 查档线 500 2000）"""
     group_id = ev.group_id
     clan_info = clanbattle_info.get(group_id)
-    # 必须判「真的在跑」而不是「开过监控」：【取消出刀监控】之后对象还留在
-    # clanbattle_info 里，只看在不在字典里会拿一个已停掉的监控去抓档线。
-    if not is_monitor_running(clan_info):
-        await bot.send(ev, "请先开启出刀监控，再查档线")
+    if not group_id:
+        await bot.send(ev, "请在群内查档线")
         return
 
     # 解析自定义档位参数（支持空格分隔多个）
@@ -406,7 +409,7 @@ async def query_clan_rank_lines(bot: HoshinoBot, ev: CQEvent):
     try:
         # 走本地缓存：档线半小时才更新，抓一次要打十几次分页；缓存按刷新槽位
         # （见 base.rank_line_slot）复用，拿到的仍是最新那批，接口量降一个数量级。
-        result = await get_rank_lines_cached(clan_info, targets)
+        result = await get_rank_lines_cached(clan_info, targets, group_id=group_id)
     except ValueError as e:
         await bot.send(ev, str(e))
         return
@@ -442,19 +445,6 @@ async def query_clan_rank_lines(bot: HoshinoBot, ev: CQEvent):
         )
         if rw:
             msg += f"　└ 🎁 宝石×{rw.get('gem')} 行会币×{rw.get('coin')} 碎片×{rw.get('shard')}\n"
-    my = data["my"]
-    msg += "─" * 14 + f"\n📊 我会排名：{my['rank']}名 伤害：{_fmt(my['damage'])}"
-    # 计算与上一档线的差距（上一档 = 排名比我好的最近档位）
-    better_lines = [
-        line for line in data["lines"] if line and my["rank"] and line["rank"] < my["rank"]
-    ]
-    if better_lines and my["damage"] is not None:
-        prev = max(better_lines, key=lambda x: x["rank"])
-        diff = prev["damage"] - my["damage"]
-        if diff <= 0:
-            msg += f"\n🚀 已超过{prev['rank']}名档线 {abs(diff):,} 伤害"
-        else:
-            msg += f"\n📈 距{prev['rank']}名档线还差 {diff:,}（约 {diff // 100000000} 亿）"
     await bot.send(ev, msg.strip())
 
 
